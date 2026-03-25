@@ -1,0 +1,11 @@
+{
+  "name": "mineflayer-bot",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node bot.mjs"
+  },
+  "dependencies": {
+    "mineflayer": "^4.23.0"
+  }
+}

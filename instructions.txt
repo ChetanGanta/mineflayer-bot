@@ -1,0 +1,12 @@
+you can edit 
+HOST = '(your servers ip adress)';
+const PORT = (your servers port);
+const USERNAME = 'MineBot';
+const VERSION = '1.20.1';
+
+instructions
+1. install the node.js from official website
+2. install files that i gave 
+3. open terminal and navigate to the folder you saved the given files using cd
+4. run npm install
+5. run node sellinbot.mjs
