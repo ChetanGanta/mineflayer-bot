@@ -1,11 +1,13 @@
 {
-  "name": "mineflayer-bot",
+  "name": "minebot-service",
   "version": "1.0.0",
+  "description": "Professional Mineflayer bot for Minecraft 1.20.1",
+  "main": "sellinbot.mjs",
   "type": "module",
   "scripts": {
-    "start": "node bot.mjs"
+    "start": "node sellinbot.mjs"
   },
   "dependencies": {
-    "mineflayer": "^4.23.0"
+    "mineflayer": "^4.20.0"
   }
 }
