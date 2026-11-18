@@ -19,6 +19,9 @@ set MC_PORT=25565
 set MC_USERNAME=MineBot
 set MC_VERSION=1.21.11
 set MC_OPERATORS=YourMinecraftUsername
+rem Explosive attacks are opt-in; leave false until tested on your private server.
+set MC_ENABLE_EXPLOSIVES=false
+set MC_MAX_SELF_BLAST_DAMAGE=4
 npm start
 ```
 
@@ -34,10 +37,12 @@ Only usernames configured in `MC_OPERATORS` can issue commands.
 - `!status` — report health, hunger and current target.
 - `!help` — list commands.
 
+Special tactics are selected automatically during an active `!fight`: spear charge at reach, mace strikes during a valid fall, Elytra-mace when airborne with a lower distant target, and crystal/TNT attacks when enabled and blast checks pass. You do not need to issue a separate special-attack command. Explosive tactics remain disabled unless `MC_ENABLE_EXPLOSIVES=true` is set.
+
 ## Weapon intelligence
 
 - **Sword / axe:** standard melee scoring; axe receives a situational preference against shield users when that state is known.
-- **Spear (1.21.11):** detects wood, stone, copper, iron, gold, diamond and netherite spear item names. The standard Mineflayer PvP attack path performs the jab-style attack. Contextual selection prefers its longer reach band and avoids selecting it when the target is too close.
+- **Spear (1.21.11):** detects wood, stone, copper, iron, gold, diamond and netherite spear item names. MineBot attempts a timed secondary-use charge inside a configured reach window, with cooldown protection. The hold duration is experimental and needs validation against the exact Paper spear implementation.
 - **Mace:** scores Density, Breach and Wind Burst enchantments. It receives a strong selection bonus only while the bot is descending toward a lower target, within a limited distance.
 - **Trident:** included in melee selection; specialised Riptide/loyalty timing is not implemented.
 - **Bow / crossbow:** basic projectile lead and preliminary crossbow charge handling.
@@ -47,17 +52,18 @@ Only usernames configured in `MC_OPERATORS` can issue commands.
 The advanced combat module detects whether the inventory contains:
 - Elytra + mace + firework rockets (Elytra-mace kit readiness)
 - End crystals + obsidian (crystal kit readiness)
-- TNT minecart + rail (TNT minecart kit readiness)
+- TNT minecart + activator rail + redstone block (powered TNT minecart kit readiness)
 
-**Readiness is not execution.** The current code does not yet perform reliable Elytra flight control, dive timing, mace wind-burst chaining, crystal placement/detonation, TNT minecart placement/detonation, blast damage simulation, or safe explosive sequencing. It deliberately does not trigger explosive actions merely because the items are present.
+**Experimental execution is now present in `special-combat.mjs`.** Spear charge, a descending mace strike, a basic Elytra launch/boost/dive attempt, end-crystal placement/attack, and TNT-minecart redstone-block, powered activator-rail and cart placement/trigger attempts are wired into the bot. Spear charge and eligible mace strikes can be attempted automatically during combat; Elytra-mace and explosive attacks are operator-triggered with `!special`.
 
 ## Known limitations
 
 - The combat policy is deterministic heuristic logic with session-local opponent speed tracking, not a trained neural network or persistent learning system.
-- Spear charge attacks (secondary-use kinetic charge), jab cooldown scheduling, and velocity/angle optimisation are not automated yet; spear selection currently uses the normal attack path.
-- Mace smash selection is a tactical hint. Full jump/fall setup, Wind Burst chaining and server-tick-perfect smash timing are not implemented.
-- Elytra flight, firework boosting, target dive tracking and safe recovery are not implemented.
-- Crystal PvP and TNT minecarting are inventory-readiness checks only. No placement, ignition, detonation or explosion prediction is implemented.
+- The autonomous special-tactic selector evaluates the target every combat cycle and applies cooldowns to avoid repeated attempts. Spear charge timing is a fixed experimental hold, not a server-tick-calibrated charge controller; spear jab/charge mechanics may differ with server plugins.
+- Mace execution attacks only when already descending toward a lower target. It does not yet create reliable jump setups or chain Wind Burst launches.
+- Elytra control uses ordinary movement inputs, a basic rocket boost and target look tracking. It is not a full flight dynamics controller and may fail to launch or recover on some servers.
+- Crystal and TNT minecart placement/trigger actions are experimental. TNT minecart triggering uses a powered activator rail and requires a redstone block, activator rail and TNT minecart. Explosion checks use Mineflayer's blast-damage estimator with raw/unarmoured damage enabled, including its block-exposure estimate. If that calculation is unavailable, the controller falls back to a conservative full-exposure upper bound. Armour, resistance, enchantment reductions, knockback and Paper-specific explosion changes are not credited.
+- Explosive actions are disabled by default. Set `MC_ENABLE_EXPLOSIVES=true` only on a private test server where you have permission. `MC_MAX_SELF_BLAST_DAMAGE` defaults to 4 health points (2 hearts) on Minecraft's 0–20 scale; the check also requires more than 2 health to remain.
 - Potion use, crossbow NBT handling and bow leading are preliminary and must be verified against the target server.
 - Paper plugins, anti-cheat, latency and server configuration can change combat outcomes and item behavior.
 - No bot can guarantee a win against every opponent or with every possible inventory.

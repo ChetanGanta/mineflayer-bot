@@ -7,6 +7,7 @@ import {
   chooseCombatPlan, updateOpponentProfile
 } from './combat-ai.mjs';
 import { chooseContextualWeapon, assessAdvancedKit, chooseAdvancedMode, classifyWeapon } from './advanced-combat.mjs';
+import { SpecialCombatController } from './special-combat.mjs';
 
 const HOST = process.env.MC_HOST;
 const PORT = Number(process.env.MC_PORT ?? 25565);
@@ -35,6 +36,10 @@ function createBot() {
   const opponentProfiles = new Map();
   bot.loadPlugin(pathfinder);
   bot.loadPlugin(pvp);
+  const special = new SpecialCombatController(bot, {
+    maxSelfDamage: Number(process.env.MC_MAX_SELF_BLAST_DAMAGE ?? 4),
+    explosiveAttacksEnabled: process.env.MC_ENABLE_EXPLOSIVES === 'true'
+  });
   const items = () => bot.inventory.items();
 
   async function equipBestGear() {
@@ -161,8 +166,8 @@ function createBot() {
     } finally { rangedBusy = false; }
   }
 
-  function runCombatDecision() {
-    if (!activeTarget || !bot.entity || eating || rangedBusy) return;
+  async function runCombatDecision() {
+    if (!activeTarget || !bot.entity || eating || rangedBusy || special.busy) return;
     const target = bot.players[activeTarget]?.entity;
     if (!target) {
       activeTarget = null;
@@ -173,6 +178,10 @@ function createBot() {
     const profile = updateOpponentProfile(opponentProfiles.get(activeTarget), target);
     opponentProfiles.set(activeTarget, profile);
     const distance = bot.entity.position.distanceTo(target.position);
+    // Autonomous special-tactic selector: spear, mace, Elytra-mace and (when
+    // explicitly enabled) crystal/TNT actions are chosen without !special.
+    if (await special.autoFight(target)) return;
+    if (special.busy) return;
     const held = bot.heldItem;
     const contextualWeapon = chooseContextualWeapon(items(), {
       distance,
@@ -195,8 +204,7 @@ function createBot() {
     else if (['engage','close-gap','guarded-engage'].includes(plan.mode)) {
       const current = bot.pvp.target;
       if (!current || current.id !== target.id) bot.pvp.attack(target);
-      // Spear jab is performed through the normal attack path. Spear charge,
-      // mace wind-burst chains and Elytra steering need dedicated live-tested controllers.
+      // Ordinary weapons continue through mineflayer-pvp.
     } else if (plan.mode === 'recover' || plan.mode === 'disengage') {
       bot.pvp.stop();
     }
@@ -223,7 +231,7 @@ function createBot() {
     }
     if (!isOperator(username)) return;
     switch (cmd.toLowerCase()) {
-      case '!help': bot.chat('Commands: !fight <player>, !stop, !gear, !kit, !analyze, !status'); break;
+      case '!help': bot.chat('Commands: !fight <player>, !stop, !gear, !kit, !analyze, !status. Special tactics are selected automatically during fights.'); break;
       case '!fight': {
         const name = args[0];
         if (!name || name.toLowerCase() === bot.username.toLowerCase()) { bot.chat('Usage: !fight <nearby-player>'); break; }
@@ -239,7 +247,7 @@ function createBot() {
         } else runCombatDecision();
         break;
       }
-      case '!stop': activeTarget = null; bot.pvp.stop(); bot.clearControlStates(); bot.chat('Combat stopped.'); break;
+      case '!stop': activeTarget = null; special.stop(); bot.pvp.stop(); bot.clearControlStates(); bot.chat('Combat stopped.'); break;
       case '!gear': {
         const weapon = await equipBestGear();
         const bow = chooseBestBow(items());
@@ -274,6 +282,7 @@ function createBot() {
   bot.on('end', () => {
     if (gearTimer) clearInterval(gearTimer);
     if (combatTimer) clearInterval(combatTimer);
+    special.stop();
     console.log('[RECONNECT] Retrying in 5 seconds...');
     if (!shuttingDown) reconnectTimer = setTimeout(createBot, 5000);
   });
