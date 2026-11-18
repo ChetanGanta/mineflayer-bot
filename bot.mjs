@@ -166,7 +166,7 @@ function createBot() {
     } finally { rangedBusy = false; }
   }
 
-  function runCombatDecision() {
+  async function runCombatDecision() {
     if (!activeTarget || !bot.entity || eating || rangedBusy || special.busy) return;
     const target = bot.players[activeTarget]?.entity;
     if (!target) {
@@ -178,6 +178,10 @@ function createBot() {
     const profile = updateOpponentProfile(opponentProfiles.get(activeTarget), target);
     opponentProfiles.set(activeTarget, profile);
     const distance = bot.entity.position.distanceTo(target.position);
+    // Autonomous special-tactic selector: spear, mace, Elytra-mace and (when
+    // explicitly enabled) crystal/TNT actions are chosen without !special.
+    if (await special.autoFight(target)) return;
+    if (special.busy) return;
     const held = bot.heldItem;
     const contextualWeapon = chooseContextualWeapon(items(), {
       distance,
@@ -193,16 +197,6 @@ function createBot() {
         .finally(() => { weaponSwitchBusy = false; });
     }
     const plan = assess(target);
-    // Run charge-based spear attacks only in their usable reach band.
-    if (contextualWeapon && /_spear$/.test(contextualWeapon.name) && distance >= 2.2 && distance <= 6.2 && !special.busy) {
-      void special.spearCharge(target);
-      return;
-    }
-    // Mace impact is attempted only during a real downward fall window.
-    if (contextualWeapon?.name === 'mace' && (bot.entity.velocity?.y ?? 0) < -0.18 && !special.busy) {
-      void special.maceSmash(target);
-      return;
-    }
     if (plan.mode === 'ranged') {
       if (chooseCrossbow(items())) void fireCrossbowShot(target);
       else void firePredictedBowShot(target);
@@ -237,7 +231,7 @@ function createBot() {
     }
     if (!isOperator(username)) return;
     switch (cmd.toLowerCase()) {
-      case '!help': bot.chat('Commands: !fight <player>, !stop, !gear, !kit, !analyze, !status, !special <spear|mace|elytra-mace|crystal|tnt>'); break;
+      case '!help': bot.chat('Commands: !fight <player>, !stop, !gear, !kit, !analyze, !status. Special tactics are selected automatically during fights.'); break;
       case '!fight': {
         const name = args[0];
         if (!name || name.toLowerCase() === bot.username.toLowerCase()) { bot.chat('Usage: !fight <nearby-player>'); break; }
@@ -272,20 +266,6 @@ function createBot() {
         const special = target ? chooseAdvancedMode({ target, distance: bot.entity.position.distanceTo(target.position), botPosition: bot.entity.position, botVelocity: bot.entity.velocity, inventory: items() }) : null;
         const profile = target ? opponentProfiles.get(activeTarget) : null;
         bot.chat(`AI: ${plan.mode}; advanced: ${special?.mode ?? 'idle'}; ${special?.reason ?? 'no target'}; ${plan.reason}; HP ${Math.round(bot.health)}/20; hunger ${Math.round(bot.food)}/20; target avg speed ${(profile?.averageSpeed ?? 0).toFixed(2)}.`);
-        break;
-      }
-      case '!special': {
-        const target = activeTarget ? bot.players[activeTarget]?.entity : null;
-        if (!target) { bot.chat('Start !fight <player> first; the target must be visible.'); break; }
-        const mode = (args[0] ?? '').toLowerCase();
-        let result;
-        if (mode === 'spear') result = { ok: await special.spearCharge(target), reason: 'spear charge attempted only inside its range window' };
-        else if (mode === 'mace') result = { ok: await special.maceSmash(target), reason: 'mace smash attempted only while descending toward the target' };
-        else if (mode === 'elytra-mace') result = { ok: await special.startElytraMace(target), reason: 'Elytra-mace flight sequence completed or timed out' };
-        else if (mode === 'crystal') result = await special.crystalAttack(target);
-        else if (mode === 'tnt') result = await special.tntMinecartAttack(target);
-        else { bot.chat('Usage: !special <spear|mace|elytra-mace|crystal|tnt>'); break; }
-        bot.chat(`${result.ok ? 'Special action sent' : 'Special action skipped'}: ${result.reason}`);
         break;
       }
       case '!status': bot.chat(`Health: ${Math.round(bot.health)}/20 | Food: ${Math.round(bot.food)}/20 | Target: ${activeTarget ?? 'none'}`); break;
