@@ -2,7 +2,7 @@ import mineflayer from 'mineflayer';
 import { pathfinder, Movements } from 'mineflayer-pathfinder';
 import { plugin as pvp } from 'mineflayer-pvp';
 import {
-  chooseBestWeapon, chooseBestBow, chooseCrossbow, isCrossbowLoaded,
+  chooseBestBow, chooseCrossbow, isCrossbowLoaded,
   chooseCombatPotion, assessSpecialKit, hasArrows, scoreArmor,
   chooseCombatPlan, updateOpponentProfile
 } from './combat-ai.mjs';
@@ -173,7 +173,6 @@ function createBot() {
     const profile = updateOpponentProfile(opponentProfiles.get(activeTarget), target);
     opponentProfiles.set(activeTarget, profile);
     const distance = bot.entity.position.distanceTo(target.position);
-    const special = chooseAdvancedMode({ target, distance, botPosition: bot.entity.position, botVelocity: bot.entity.velocity, inventory: items() });
     const held = bot.heldItem;
     const contextualWeapon = chooseContextualWeapon(items(), {
       distance,
