@@ -6,11 +6,12 @@ import {
   chooseCombatPotion, assessSpecialKit, hasArrows, scoreArmor,
   chooseCombatPlan, updateOpponentProfile
 } from './combat-ai.mjs';
+import { chooseContextualWeapon, assessAdvancedKit, chooseAdvancedMode, classifyWeapon } from './advanced-combat.mjs';
 
 const HOST = process.env.MC_HOST;
 const PORT = Number(process.env.MC_PORT ?? 25565);
 const USERNAME = process.env.MC_USERNAME ?? 'MineBot';
-const VERSION = process.env.MC_VERSION ?? '1.20.1';
+const VERSION = process.env.MC_VERSION ?? '1.21.11';
 const OPERATORS = new Set((process.env.MC_OPERATORS ?? '').split(',').map(x => x.trim().toLowerCase()).filter(Boolean));
 if (!HOST) { console.error('Set MC_HOST before starting.'); process.exit(1); }
 
@@ -45,7 +46,7 @@ function createBot() {
       }
       const shield = items().find(i => i.name === 'shield');
       if (shield) try { await bot.equip(shield, 'off-hand'); } catch (e) { console.debug(e.message); }
-      const weapon = chooseBestWeapon(items());
+      const weapon = chooseContextualWeapon(items(), { distance: 3 });
       if (weapon) try { await bot.equip(weapon, 'hand'); } catch (e) { console.debug(e.message); }
       return weapon;
     } finally { gearBusy = false; }
@@ -120,7 +121,7 @@ function createBot() {
     return chooseCombatPlan({
       health: bot.health, food: bot.food,
       distance: target ? bot.entity.position.distanceTo(target.position) : Infinity,
-      weapon: chooseBestWeapon(inventory),
+      weapon: chooseContextualWeapon(inventory, { distance: target ? bot.entity.position.distanceTo(target.position) : 3 }),
       bow: chooseBestBow(inventory),
       crossbow: chooseCrossbow(inventory),
       arrows: hasArrows(inventory),
@@ -170,6 +171,19 @@ function createBot() {
     }
     const profile = updateOpponentProfile(opponentProfiles.get(activeTarget), target);
     opponentProfiles.set(activeTarget, profile);
+    const distance = bot.entity.position.distanceTo(target.position);
+    const special = chooseAdvancedMode({ target, distance, botPosition: bot.entity.position, botVelocity: bot.entity.velocity, inventory: items() });
+    const held = bot.heldItem;
+    const contextualWeapon = chooseContextualWeapon(items(), {
+      distance,
+      verticalVelocity: bot.entity.velocity?.y ?? 0,
+      heightAdvantage: bot.entity.position.y - target.position.y,
+      closingSpeed: Math.hypot(target.velocity?.x ?? 0, target.velocity?.z ?? 0),
+      opponentHasShield: false
+    });
+    if (contextualWeapon && held?.name !== contextualWeapon.name && !gearBusy) {
+      void bot.equip(contextualWeapon, 'hand').catch(error => console.debug('Weapon switch skipped:', error.message));
+    }
     const plan = assess(target);
     if (plan.mode === 'ranged') {
       if (chooseCrossbow(items())) void fireCrossbowShot(target);
@@ -178,6 +192,8 @@ function createBot() {
     else if (['engage','close-gap','guarded-engage'].includes(plan.mode)) {
       const current = bot.pvp.target;
       if (!current || current.id !== target.id) bot.pvp.attack(target);
+      // Spear jab is performed through the normal attack path. Spear charge,
+      // mace wind-burst chains and Elytra steering need dedicated live-tested controllers.
     } else if (plan.mode === 'recover' || plan.mode === 'disengage') {
       bot.pvp.stop();
     }
@@ -229,8 +245,8 @@ function createBot() {
         break;
       }
       case '!kit': {
-        const kit = assessSpecialKit(items());
-        bot.chat(`Kit: crossbow ${kit.crossbow ? 'yes' : 'no'} | potion ${kit.potion ? 'yes' : 'no'} | crystals ${kit.endCrystal ? 'yes' : 'no'} + obsidian ${kit.obsidian ? 'yes' : 'no'} | anchor ${kit.respawnAnchor ? 'yes' : 'no'} + glowstone ${kit.glowstone ? 'yes' : 'no'}.`);
+        const kit = { ...assessSpecialKit(items()), ...assessAdvancedKit(items()) };
+        bot.chat(`Kit: spear ${kit.spear ? 'yes' : 'no'} | mace ${kit.mace ? 'yes' : 'no'} | elytra ${kit.elytra ? 'yes' : 'no'} | elytra-mace ${kit.elytraMaceReady ? 'ready' : 'missing gear'} | crystal ${kit.crystalPvPReady ? 'ready' : 'missing gear'} | TNT minecart ${kit.tntMinecartReady ? 'ready' : 'missing gear'} | crossbow ${kit.crossbow ? 'yes' : 'no'} | potion ${kit.potion ? 'yes' : 'no'}.`);
         break;
       }
       case '!analyze': {
