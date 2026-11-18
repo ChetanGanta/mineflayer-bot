@@ -7,6 +7,7 @@ import {
   chooseCombatPlan, updateOpponentProfile
 } from './combat-ai.mjs';
 import { chooseContextualWeapon, assessAdvancedKit, chooseAdvancedMode, classifyWeapon } from './advanced-combat.mjs';
+import { SpecialCombatController } from './special-combat.mjs';
 
 const HOST = process.env.MC_HOST;
 const PORT = Number(process.env.MC_PORT ?? 25565);
@@ -35,6 +36,10 @@ function createBot() {
   const opponentProfiles = new Map();
   bot.loadPlugin(pathfinder);
   bot.loadPlugin(pvp);
+  const special = new SpecialCombatController(bot, {
+    maxSelfDamage: Number(process.env.MC_MAX_SELF_BLAST_DAMAGE ?? 4),
+    explosiveAttacksEnabled: process.env.MC_ENABLE_EXPLOSIVES === 'true'
+  });
   const items = () => bot.inventory.items();
 
   async function equipBestGear() {
@@ -188,6 +193,16 @@ function createBot() {
         .finally(() => { weaponSwitchBusy = false; });
     }
     const plan = assess(target);
+    // Run charge-based spear attacks only in their usable reach band.
+    if (contextualWeapon && /_spear$/.test(contextualWeapon.name) && distance >= 2.2 && distance <= 6.2 && !special.busy) {
+      void special.spearCharge(target);
+      return;
+    }
+    // Mace impact is attempted only during a real downward fall window.
+    if (contextualWeapon?.name === 'mace' && (bot.entity.velocity?.y ?? 0) < -0.18 && !special.busy) {
+      void special.maceSmash(target);
+      return;
+    }
     if (plan.mode === 'ranged') {
       if (chooseCrossbow(items())) void fireCrossbowShot(target);
       else void firePredictedBowShot(target);
@@ -195,8 +210,7 @@ function createBot() {
     else if (['engage','close-gap','guarded-engage'].includes(plan.mode)) {
       const current = bot.pvp.target;
       if (!current || current.id !== target.id) bot.pvp.attack(target);
-      // Spear jab is performed through the normal attack path. Spear charge,
-      // mace wind-burst chains and Elytra steering need dedicated live-tested controllers.
+      // Ordinary weapons continue through mineflayer-pvp.
     } else if (plan.mode === 'recover' || plan.mode === 'disengage') {
       bot.pvp.stop();
     }
@@ -223,7 +237,7 @@ function createBot() {
     }
     if (!isOperator(username)) return;
     switch (cmd.toLowerCase()) {
-      case '!help': bot.chat('Commands: !fight <player>, !stop, !gear, !kit, !analyze, !status'); break;
+      case '!help': bot.chat('Commands: !fight <player>, !stop, !gear, !kit, !analyze, !status, !special <spear|mace|elytra-mace|crystal|tnt>'); break;
       case '!fight': {
         const name = args[0];
         if (!name || name.toLowerCase() === bot.username.toLowerCase()) { bot.chat('Usage: !fight <nearby-player>'); break; }
@@ -239,7 +253,7 @@ function createBot() {
         } else runCombatDecision();
         break;
       }
-      case '!stop': activeTarget = null; bot.pvp.stop(); bot.clearControlStates(); bot.chat('Combat stopped.'); break;
+      case '!stop': activeTarget = null; special.stop(); bot.pvp.stop(); bot.clearControlStates(); bot.chat('Combat stopped.'); break;
       case '!gear': {
         const weapon = await equipBestGear();
         const bow = chooseBestBow(items());
@@ -260,6 +274,20 @@ function createBot() {
         bot.chat(`AI: ${plan.mode}; advanced: ${special?.mode ?? 'idle'}; ${special?.reason ?? 'no target'}; ${plan.reason}; HP ${Math.round(bot.health)}/20; hunger ${Math.round(bot.food)}/20; target avg speed ${(profile?.averageSpeed ?? 0).toFixed(2)}.`);
         break;
       }
+      case '!special': {
+        const target = activeTarget ? bot.players[activeTarget]?.entity : null;
+        if (!target) { bot.chat('Start !fight <player> first; the target must be visible.'); break; }
+        const mode = (args[0] ?? '').toLowerCase();
+        let result;
+        if (mode === 'spear') result = { ok: await special.spearCharge(target), reason: 'spear charge attempted only inside its range window' };
+        else if (mode === 'mace') result = { ok: await special.maceSmash(target), reason: 'mace smash attempted only while descending toward the target' };
+        else if (mode === 'elytra-mace') result = { ok: await special.startElytraMace(target), reason: 'Elytra-mace flight sequence completed or timed out' };
+        else if (mode === 'crystal') result = await special.crystalAttack(target);
+        else if (mode === 'tnt') result = await special.tntMinecartAttack(target);
+        else { bot.chat('Usage: !special <spear|mace|elytra-mace|crystal|tnt>'); break; }
+        bot.chat(`${result.ok ? 'Special action sent' : 'Special action skipped'}: ${result.reason}`);
+        break;
+      }
       case '!status': bot.chat(`Health: ${Math.round(bot.health)}/20 | Food: ${Math.round(bot.food)}/20 | Target: ${activeTarget ?? 'none'}`); break;
     }
   });
@@ -274,6 +302,7 @@ function createBot() {
   bot.on('end', () => {
     if (gearTimer) clearInterval(gearTimer);
     if (combatTimer) clearInterval(combatTimer);
+    special.stop();
     console.log('[RECONNECT] Retrying in 5 seconds...');
     if (!shuttingDown) reconnectTimer = setTimeout(createBot, 5000);
   });
