@@ -171,7 +171,10 @@ function createBot() {
     const profile = updateOpponentProfile(opponentProfiles.get(activeTarget), target);
     opponentProfiles.set(activeTarget, profile);
     const plan = assess(target);
-    if (plan.mode === 'ranged') {\n      if (chooseCrossbow(items())) void fireCrossbowShot(target);\n      else void firePredictedBowShot(target);\n    }
+    if (plan.mode === 'ranged') {
+      if (chooseCrossbow(items())) void fireCrossbowShot(target);
+      else void firePredictedBowShot(target);
+    }
     else if (['engage','close-gap','guarded-engage'].includes(plan.mode)) {
       const current = bot.pvp.target;
       if (!current || current.id !== target.id) bot.pvp.attack(target);
