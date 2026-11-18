@@ -7,6 +7,7 @@ import {
   chooseCombatPlan, updateOpponentProfile
 } from './combat-ai.mjs';
 import { chooseContextualWeapon, assessAdvancedKit, chooseAdvancedMode, classifyWeapon } from './advanced-combat.mjs';
+import { CombatExecution } from './combat-execution.mjs';
 
 const HOST = process.env.MC_HOST;
 const PORT = Number(process.env.MC_PORT ?? 25565);
@@ -36,6 +37,8 @@ function createBot() {
   bot.loadPlugin(pathfinder);
   bot.loadPlugin(pvp);
   const items = () => bot.inventory.items();
+  const execution = new CombatExecution(bot, { inventory: items, getTargetName: () => activeTarget });
+  let advancedBusy = false;
 
   async function equipBestGear() {
     if (gearBusy || !bot.entity) return null;
@@ -188,6 +191,22 @@ function createBot() {
         .finally(() => { weaponSwitchBusy = false; });
     }
     const plan = assess(target);
+    const special = chooseAdvancedMode({ target, distance, botPosition: bot.entity.position, botVelocity: bot.entity.velocity, inventory: items() });
+    if (special.mode !== 'standard' && !advancedBusy) {
+      advancedBusy = true;
+      void execution.execute(special.mode, target)
+        .then(result => {
+          if (result.ok) {
+            bot.pvp.stop();
+            console.log(`[ADVANCED] ${special.mode}: ${result.reason}`);
+          } else {
+            console.debug(`[ADVANCED] ${special.mode} skipped: ${result.reason}`);
+          }
+        })
+        .catch(error => console.error('[ADVANCED COMBAT ERROR]', error))
+        .finally(() => { advancedBusy = false; });
+      if (['crystal-ready','tnt-minecart-ready','elytra-mace-ready'].includes(special.mode)) return;
+    }
     if (plan.mode === 'ranged') {
       if (chooseCrossbow(items())) void fireCrossbowShot(target);
       else void firePredictedBowShot(target);
@@ -195,8 +214,7 @@ function createBot() {
     else if (['engage','close-gap','guarded-engage'].includes(plan.mode)) {
       const current = bot.pvp.target;
       if (!current || current.id !== target.id) bot.pvp.attack(target);
-      // Spear jab is performed through the normal attack path. Spear charge,
-      // mace wind-burst chains and Elytra steering need dedicated live-tested controllers.
+      // Weapon-specific charge and smash windows are handled by CombatExecution above.
     } else if (plan.mode === 'recover' || plan.mode === 'disengage') {
       bot.pvp.stop();
     }
@@ -239,7 +257,7 @@ function createBot() {
         } else runCombatDecision();
         break;
       }
-      case '!stop': activeTarget = null; bot.pvp.stop(); bot.clearControlStates(); bot.chat('Combat stopped.'); break;
+      case '!stop': activeTarget = null; execution.stop(); bot.pvp.stop(); bot.clearControlStates(); bot.chat('Combat stopped.'); break;
       case '!gear': {
         const weapon = await equipBestGear();
         const bow = chooseBestBow(items());
@@ -274,6 +292,7 @@ function createBot() {
   bot.on('end', () => {
     if (gearTimer) clearInterval(gearTimer);
     if (combatTimer) clearInterval(combatTimer);
+    execution.dispose();
     console.log('[RECONNECT] Retrying in 5 seconds...');
     if (!shuttingDown) reconnectTimer = setTimeout(createBot, 5000);
   });
