@@ -2,7 +2,8 @@ import mineflayer from 'mineflayer';
 import { pathfinder, Movements } from 'mineflayer-pathfinder';
 import { plugin as pvp } from 'mineflayer-pvp';
 import {
-  chooseBestWeapon, chooseBestBow, hasArrows, scoreArmor,
+  chooseBestWeapon, chooseBestBow, chooseCrossbow, isCrossbowLoaded,
+  chooseCombatPotion, assessSpecialKit, hasArrows, scoreArmor,
   chooseCombatPlan, updateOpponentProfile
 } from './combat-ai.mjs';
 
@@ -25,6 +26,7 @@ function createBot() {
   let gearBusy = false;
   let eating = false;
   let rangedBusy = false;
+  let potionBusy = false;
   let lastShotAt = 0;
   let gearTimer;
   let combatTimer;
@@ -66,6 +68,52 @@ function createBot() {
     finally { eating = false; }
   }
 
+  async function useEmergencyPotion() {
+    if (potionBusy || !bot.entity || bot.health > 8) return;
+    const potion = chooseCombatPotion(items(), bot.health);
+    if (!potion || potion.name !== 'potion') return;
+    const potionText = JSON.stringify(potion.nbt ?? {}).toLowerCase();
+    if (!/healing|instant_health|regeneration/.test(potionText)) return;
+    potionBusy = true;
+    try {
+      bot.pvp.stop();
+      await bot.equip(potion, 'hand');
+      await bot.consume();
+    } catch (e) { console.debug('Potion use skipped:', e.message); }
+    finally { potionBusy = false; }
+  }
+
+  async function fireCrossbowShot(target) {
+    if (rangedBusy || Date.now() - lastShotAt < 2500 || !target?.isValid) return;
+    const crossbow = chooseCrossbow(items());
+    if (!crossbow || !hasArrows(items())) return;
+    rangedBusy = true;
+    lastShotAt = Date.now();
+    try {
+      bot.pvp.stop();
+      await bot.equip(crossbow, 'hand');
+      if (!isCrossbowLoaded(crossbow)) {
+        bot.activateItem();
+        await sleep(1250);
+        bot.deactivateItem();
+        await sleep(250);
+      }
+      const current = items().find(item => item.name === 'crossbow');
+      if (!isCrossbowLoaded(current)) return;
+      const distance = bot.entity.position.distanceTo(target.position);
+      const leadTicks = Math.min(18, Math.max(2, distance / 2.5));
+      const v = target.velocity ?? { x: 0, y: 0, z: 0 };
+      const aimPoint = target.position.offset((v.x ?? 0) * leadTicks, 1.1 + (v.y ?? 0) * leadTicks, (v.z ?? 0) * leadTicks);
+      await bot.lookAt(aimPoint, true);
+      if (activeTarget && target.isValid) bot.activateItem();
+      await sleep(150);
+      bot.deactivateItem();
+    } catch (e) {
+      try { bot.deactivateItem(); } catch {}
+      console.debug('Crossbow attack skipped:', e.message);
+    } finally { rangedBusy = false; }
+  }
+
   function assess(target) {
     const inventory = items();
     const hasFood = inventory.some(i => /cooked_|bread|golden_carrot|golden_apple|apple|carrot|potato|beetroot|melon/.test(i.name));
@@ -74,6 +122,7 @@ function createBot() {
       distance: target ? bot.entity.position.distanceTo(target.position) : Infinity,
       weapon: chooseBestWeapon(inventory),
       bow: chooseBestBow(inventory),
+      crossbow: chooseCrossbow(inventory),
       arrows: hasArrows(inventory),
       hasShield: inventory.some(i => i.name === 'shield'),
       hasFood,
@@ -122,7 +171,7 @@ function createBot() {
     const profile = updateOpponentProfile(opponentProfiles.get(activeTarget), target);
     opponentProfiles.set(activeTarget, profile);
     const plan = assess(target);
-    if (plan.mode === 'ranged') void firePredictedBowShot(target);
+    if (plan.mode === 'ranged') {\n      if (chooseCrossbow(items())) void fireCrossbowShot(target);\n      else void firePredictedBowShot(target);\n    }
     else if (['engage','close-gap','guarded-engage'].includes(plan.mode)) {
       const current = bot.pvp.target;
       if (!current || current.id !== target.id) bot.pvp.attack(target);
@@ -139,7 +188,7 @@ function createBot() {
     movements.allowParkour = true;
     bot.pathfinder.setMovements(movements);
     await equipBestGear();
-    gearTimer = setInterval(() => { void equipBestGear(); void eatIfNeeded(); }, 4000);
+    gearTimer = setInterval(() => { void equipBestGear(); void eatIfNeeded(); void useEmergencyPotion(); }, 4000);
     combatTimer = setInterval(runCombatDecision, 500);
   });
 
@@ -152,7 +201,7 @@ function createBot() {
     }
     if (!isOperator(username)) return;
     switch (cmd.toLowerCase()) {
-      case '!help': bot.chat('Commands: !fight <player>, !stop, !gear, !analyze, !status'); break;
+      case '!help': bot.chat('Commands: !fight <player>, !stop, !gear, !kit, !analyze, !status'); break;
       case '!fight': {
         const name = args[0];
         if (!name || name.toLowerCase() === bot.username.toLowerCase()) { bot.chat('Usage: !fight <nearby-player>'); break; }
@@ -172,7 +221,13 @@ function createBot() {
       case '!gear': {
         const weapon = await equipBestGear();
         const bow = chooseBestBow(items());
-        bot.chat(`Loadout: melee ${weapon?.name ?? 'none'} | ranged ${bow?.name ?? 'none'} | arrows ${hasArrows(items()) ? 'yes' : 'no'}.`);
+        const crossbow = chooseCrossbow(items());
+        bot.chat(`Loadout: melee ${weapon?.name ?? 'none'} | bow ${bow?.name ?? 'none'} | crossbow ${crossbow?.name ?? 'none'} | arrows ${hasArrows(items()) ? 'yes' : 'no'}.`);
+        break;
+      }
+      case '!kit': {
+        const kit = assessSpecialKit(items());
+        bot.chat(`Kit: crossbow ${kit.crossbow ? 'yes' : 'no'} | potion ${kit.potion ? 'yes' : 'no'} | crystals ${kit.endCrystal ? 'yes' : 'no'} + obsidian ${kit.obsidian ? 'yes' : 'no'} | anchor ${kit.respawnAnchor ? 'yes' : 'no'} + glowstone ${kit.glowstone ? 'yes' : 'no'}.`);
         break;
       }
       case '!analyze': {
