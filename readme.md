@@ -35,8 +35,9 @@ Only usernames configured in `MC_OPERATORS` can issue commands.
 - `!kit` — inspect spear, mace, Elytra/rocket, crystal/obsidian, TNT minecart/rail, potion and crossbow readiness.
 - `!analyze` — show the current tactical and advanced-mode assessment.
 - `!status` — report health, hunger and current target.
-- `!special spear|mace|elytra-mace|crystal|tnt` — manually request a special attack against the current target.
 - `!help` — list commands.
+
+Special tactics are selected automatically during an active `!fight`: spear charge at reach, mace strikes during a valid fall, Elytra-mace when airborne with a lower distant target, and crystal/TNT attacks when enabled and blast checks pass. You do not need to issue a separate special-attack command. Explosive tactics remain disabled unless `MC_ENABLE_EXPLOSIVES=true` is set.
 
 ## Weapon intelligence
 
@@ -58,7 +59,7 @@ The advanced combat module detects whether the inventory contains:
 ## Known limitations
 
 - The combat policy is deterministic heuristic logic with session-local opponent speed tracking, not a trained neural network or persistent learning system.
-- Spear charge timing is a fixed experimental hold, not a server-tick-calibrated charge controller; spear jab/charge mechanics may differ with server plugins.
+- The autonomous special-tactic selector evaluates the target every combat cycle and applies cooldowns to avoid repeated attempts. Spear charge timing is a fixed experimental hold, not a server-tick-calibrated charge controller; spear jab/charge mechanics may differ with server plugins.
 - Mace execution attacks only when already descending toward a lower target. It does not yet create reliable jump setups or chain Wind Burst launches.
 - Elytra control uses ordinary movement inputs, a basic rocket boost and target look tracking. It is not a full flight dynamics controller and may fail to launch or recover on some servers.
 - Crystal and TNT minecart placement/trigger actions are experimental. TNT minecart triggering uses a powered activator rail and requires a redstone block, activator rail and TNT minecart. Explosion checks use Mineflayer's blast-damage estimator with raw/unarmoured damage enabled, including its block-exposure estimate. If that calculation is unavailable, the controller falls back to a conservative full-exposure upper bound. Armour, resistance, enchantment reductions, knockback and Paper-specific explosion changes are not credited.
