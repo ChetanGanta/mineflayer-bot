@@ -95,9 +95,11 @@ export function chooseAdvancedMode({ target, distance, botPosition, botVelocity,
     return { mode:'mace-smash', reason:'descending with a lower target; mace smash window', kit };
   if (kit.elytraMaceReady && dy < -5 && distance > 5)
     return { mode:'elytra-mace-ready', reason:'Elytra, mace and rockets available; flight setup is required', kit };
-  if (kit.crystalPvPReady)
-    return { mode:'crystal-ready', reason:'crystal kit detected; explosive placement remains opt-in and requires safe damage checks', kit };
-  if (kit.tntMinecartReady)
-    return { mode:'tnt-minecart-ready', reason:'TNT minecart kit detected; rail placement and detonation remain experimental', kit };
+  if (kit.spear && distance >= 2.6 && distance <= 5.2)
+    return { mode:'spear-charge', reason:'target is inside the spear charge window', kit };
+  if (kit.crystalPvPReady && distance <= 5.2)
+    return { mode:'crystal-ready', reason:'crystal kit and close target detected; placement requires a safe damage trade', kit };
+  if (kit.tntMinecartReady && distance <= 5.5)
+    return { mode:'tnt-minecart-ready', reason:'TNT minecart kit and close target detected; powered activator rail required', kit };
   return { mode:'standard', reason:'no specialised combat window detected', kit };
 }
