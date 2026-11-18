@@ -253,7 +253,9 @@ export class SpecialCombatController {
       const base = this.bot.blockAt(spot.base?.position ?? spot.basePos);
       if (!base || !['obsidian', 'bedrock'].includes(base.name)) return { ok: false, reason: 'obsidian base placement was not confirmed' };
       await this.bot.equip(crystal, 'hand');
+      if (token !== this.generation) return { ok: false, reason: 'cancelled before crystal use' };
       await this.bot.lookAt(explosionPosition, true);
+      if (token !== this.generation) return { ok: false, reason: 'cancelled before crystal use' };
       await this.bot.activateBlock(base);
       await sleep(250);
       if (token !== this.generation) return { ok: false, reason: 'cancelled before crystal detonation' };
@@ -310,6 +312,7 @@ export class SpecialCombatController {
       if (!placedRail || placedRail.name !== 'activator_rail') return { ok: false, reason: 'powered activator rail placement not confirmed' };
       if (token !== this.generation) return { ok: false, reason: 'cancelled before minecart placement' };
       await this.bot.equip(cart, 'hand');
+      if (token !== this.generation) return { ok: false, reason: 'cancelled before minecart placement' };
       let minecart;
       try { minecart = await this.bot.placeEntity(placedRail, topFace()); } catch (error) {
         return { ok: false, reason: `TNT minecart placement failed: ${error.message}` };
