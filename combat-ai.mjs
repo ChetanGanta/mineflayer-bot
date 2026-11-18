@@ -69,9 +69,9 @@ export function chooseCombatPlan({ health, food, distance, weapon, bow, arrows, 
   if (health <= 5 && hasFood) return { mode:'recover', reason:'critical health' };
   if (health <= 7 && !hasFood) return { mode:'disengage', reason:'critical health and no food' };
   if (food <= 6) return { mode:'recover', reason:'low hunger' };
-  if (!weapon && bow && arrows && distance > 5) return { mode:'ranged', reason:'bow and arrows available; target outside melee range' };
+  if (!weapon && (bow || crossbow) && arrows && distance > 5) return { mode:'ranged', reason:'bow and arrows available; target outside melee range' };
   if (!weapon) return { mode:'survive', reason:'no usable weapon; unarmed fallback' };
-  if (bow && arrows && distance > 9 && (opponentProfile?.averageSpeed ?? 0) < 0.2)
+  if ((bow || crossbow) && arrows && distance > 9 && (opponentProfile?.averageSpeed ?? 0) < 0.2)
     return { mode:'ranged', reason:'stationary distant target; ranged attack preferred' };
   if (distance > 5) return { mode:'close-gap', reason:'target outside melee range' };
   if (hasShield && health <= 12) return { mode:'guarded-engage', reason:'shield available and health reduced' };
