@@ -91,6 +91,8 @@ export class SpecialCombatController {
     this.lastMaceAt = 0;
     this.lastRocketAt = 0;
     this.lastExplosiveAt = 0;
+    this.lastElytraAt = 0;
+    this.lastAutoDecisionAt = 0;
     this.flightMode = false;
     this.generation = 0;
   }
@@ -169,9 +171,10 @@ export class SpecialCombatController {
   }
 
   async startElytraMace(target) {
-    if (this.busy || !target?.isValid) return false;
+    if (this.busy || Date.now() - this.lastElytraAt < 12000 || !target?.isValid) return false;
     if (!this.getItem('elytra') || !this.getItem('mace') || !this.getItem('firework_rocket')) return false;
     this.busy = true;
+    this.lastElytraAt = Date.now();
     const token = this.generation;
     try {
       this.bot.pvp.stop();
@@ -333,6 +336,35 @@ export class SpecialCombatController {
     }
   }
 
+  // Automatically choose a special tactic from live combat state.
+  // Called by the main fight loop; no special chat command is required.
+  async autoFight(target) {
+    if (this.busy || !target?.isValid || !this.bot.entity) return false;
+    if (Date.now() - this.lastAutoDecisionAt < 700) return false;
+    this.lastAutoDecisionAt = Date.now();
+    const self = this.bot.entity.position;
+    const d = distance(self, target.position);
+    const dy = target.position.y - self.y;
+    const vy = this.bot.entity.velocity?.y ?? 0;
+    const inventory = this.inventory;
+    const has = name => inventory.some(item => item.name === name);
+    const spear = inventory.find(item => /_spear$/.test(item.name));
+    if (spear && d >= 2.2 && d <= 6.2 && Date.now() - this.lastSpearAt >= 1800) return this.spearCharge(target);
+    if (has('mace') && vy < -0.18 && dy < -1.4 && d <= 5.5 && Date.now() - this.lastMaceAt >= 900) return this.maceSmash(target);
+    if (has('elytra') && has('mace') && has('firework_rocket') && d > 8 && dy < -3 && !this.bot.entity.onGround && Date.now() - this.lastElytraAt >= 12000) return this.startElytraMace(target);
+    // Explosives remain automatic only when explicitly enabled by the server owner.
+    if (this.explosiveAttacksEnabled && d <= 5.5 && Date.now() - this.lastExplosiveAt >= 2500) {
+      if (has('end_crystal') && has('obsidian')) {
+        const result = await this.crystalAttack(target);
+        if (result.ok) return true;
+      }
+      if (has('tnt_minecart') && has('activator_rail') && has('redstone_block') && Date.now() - this.lastExplosiveAt >= 3000) {
+        const result = await this.tntMinecartAttack(target);
+        if (result.ok) return true;
+      }
+    }
+    return false;
+  }
   stop() {
     this.generation += 1;
     this.busy = false;
