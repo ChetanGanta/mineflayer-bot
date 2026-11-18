@@ -92,6 +92,7 @@ export class SpecialCombatController {
     this.lastRocketAt = 0;
     this.lastExplosiveAt = 0;
     this.flightMode = false;
+    this.generation = 0;
   }
 
   get inventory() { return this.bot.inventory.items(); }
@@ -118,6 +119,7 @@ export class SpecialCombatController {
     const d = distance(this.bot.entity.position, target.position);
     if (d < 2.2 || d > 6.2) return false;
     this.busy = true;
+    const token = this.generation;
     this.lastSpearAt = Date.now();
     try {
       this.bot.pvp.stop();
@@ -125,6 +127,7 @@ export class SpecialCombatController {
       await this.bot.lookAt(target.position.offset(0, 1, 0), true);
       this.bot.activateItem();
       await sleep(650); // charge window; exact release timing is server/weapon dependent
+      if (token !== this.generation) return false;
       if (!target.isValid || distance(this.bot.entity.position, target.position) > 7) return false;
       this.bot.deactivateItem();
       return true;
@@ -146,11 +149,13 @@ export class SpecialCombatController {
     const d = distance(this.bot.entity.position, target.position);
     if (vy > -0.18 || dy < 1.4 || d > 5.5) return false;
     this.busy = true;
+    const token = this.generation;
     this.lastMaceAt = Date.now();
     try {
       this.bot.pvp.stop();
       await this.bot.equip(mace, 'hand');
       await this.bot.lookAt(target.position.offset(0, 0.9, 0), true);
+      if (token !== this.generation) return false;
       // Attack only while descending and in the mace's close impact window.
       if (target.isValid && (this.bot.entity.velocity?.y ?? 0) < -0.12 &&
           distance(this.bot.entity.position, target.position) <= 4.5) {
@@ -167,9 +172,11 @@ export class SpecialCombatController {
     if (this.busy || !target?.isValid) return false;
     if (!this.getItem('elytra') || !this.getItem('mace') || !this.getItem('firework_rocket')) return false;
     this.busy = true;
+    const token = this.generation;
     try {
       this.bot.pvp.stop();
       await this.bot.equip('elytra', 'torso');
+      if (token !== this.generation) return false;
       // Start gliding with a jump input while airborne. The controller does not
       // teleport or force server state; it relies on vanilla client movement.
       this.bot.setControlState('forward', true);
@@ -183,10 +190,11 @@ export class SpecialCombatController {
       this.bot.setControlState('jump', false);
       this.flightMode = true;
       const deadline = Date.now() + 6500;
-      while (Date.now() < deadline && target.isValid && this.bot.entity) {
+      while (token === this.generation && Date.now() < deadline && target.isValid && this.bot.entity) {
         const d = distance(this.bot.entity.position, target.position);
         const aim = target.position.offset(0, 0.8, 0);
         await this.bot.lookAt(aim, true);
+        if (token !== this.generation) break;
         const vy = this.bot.entity.velocity?.y ?? 0;
         if (vy < -0.25 && d < 5) {
           await this.equip('mace', 'hand');
@@ -231,6 +239,7 @@ export class SpecialCombatController {
       return { ok: false, reason: `crystal rejected: worst-case self damage ${selfDamage.toFixed(1)} exceeds safety budget` };
     }
     this.busy = true;
+    const token = this.generation;
     this.lastExplosiveAt = Date.now();
     try {
       this.bot.pvp.stop();
@@ -238,13 +247,16 @@ export class SpecialCombatController {
         await this.bot.equip(obsidian, 'hand');
         await this.bot.placeBlock(spot.support, topFace());
         await sleep(120);
+        if (token !== this.generation) return { ok: false, reason: 'cancelled before crystal placement' };
       }
+      if (token !== this.generation) return { ok: false, reason: 'cancelled before crystal placement' };
       const base = this.bot.blockAt(spot.base?.position ?? spot.basePos);
       if (!base || !['obsidian', 'bedrock'].includes(base.name)) return { ok: false, reason: 'obsidian base placement was not confirmed' };
       await this.bot.equip(crystal, 'hand');
       await this.bot.lookAt(explosionPosition, true);
       await this.bot.activateBlock(base);
       await sleep(250);
+      if (token !== this.generation) return { ok: false, reason: 'cancelled before crystal detonation' };
       const spawned = Object.values(this.bot.entities).find(entity =>
         entity.name === 'end_crystal' && distance(entity.position, explosionPosition) < 2);
       if (!spawned) return { ok: false, reason: 'crystal placement not confirmed by entity spawn' };
@@ -280,12 +292,14 @@ export class SpecialCombatController {
       return { ok: false, reason: `TNT minecart rejected: worst-case self damage ${selfDamage.toFixed(1)} exceeds safety budget` };
     }
     this.busy = true;
+    const token = this.generation;
     this.lastExplosiveAt = Date.now();
     try {
       this.bot.pvp.stop();
       await this.bot.equip(rail, 'hand');
       await this.bot.placeBlock(candidate.support, topFace());
       await sleep(100);
+      if (token !== this.generation) return { ok: false, reason: 'cancelled before minecart placement' };
       const placedRail = this.bot.blockAt(candidate.railPos);
       if (!placedRail || !placedRail.name.includes('rail')) return { ok: false, reason: 'rail placement not confirmed' };
       await this.bot.equip(cart, 'hand');
@@ -295,6 +309,7 @@ export class SpecialCombatController {
       try { minecart = await this.bot.placeEntity(placedRail, topFace()); } catch {}
       minecart ??= Object.values(this.bot.entities).find(entity =>
         /minecart/.test(entity.name ?? '') && distance(entity.position, explosionPosition) < 2);
+      if (token !== this.generation) return { ok: false, reason: 'cancelled before minecart trigger' };
       if (!minecart) return { ok: false, reason: 'TNT minecart spawn not confirmed; detonation skipped' };
       const finalSelfDamage = this.blastDamage(this.bot.entity, minecart.position, 8);
       const finalTargetDamage = this.blastDamage(target, minecart.position, 8);
@@ -315,6 +330,7 @@ export class SpecialCombatController {
   }
 
   stop() {
+    this.generation += 1;
     this.busy = false;
     this.flightMode = false;
     this.bot.setControlState('forward', false);
