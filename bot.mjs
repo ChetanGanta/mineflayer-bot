@@ -167,7 +167,7 @@ function createBot() {
   }
 
   function runCombatDecision() {
-    if (!activeTarget || !bot.entity || eating || rangedBusy) return;
+    if (!activeTarget || !bot.entity || eating || rangedBusy || special.busy) return;
     const target = bot.players[activeTarget]?.entity;
     if (!target) {
       activeTarget = null;
