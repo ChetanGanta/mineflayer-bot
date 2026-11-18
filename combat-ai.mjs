@@ -65,7 +65,7 @@ export function updateOpponentProfile(profile, target) {
   if (speed > 0.12) next.movingSamples += 1;
   return next;
 }
-export function chooseCombatPlan({ health, food, distance, weapon, bow, arrows, hasShield, hasFood, opponentProfile }) {
+export function chooseCombatPlan({ health, food, distance, weapon, bow, crossbow, arrows, hasShield, hasFood, opponentProfile }) {
   if (health <= 5 && hasFood) return { mode:'recover', reason:'critical health' };
   if (health <= 7 && !hasFood) return { mode:'disengage', reason:'critical health and no food' };
   if (food <= 6) return { mode:'recover', reason:'low hunger' };
