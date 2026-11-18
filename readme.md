@@ -1,26 +1,72 @@
-# 🤖 MineBot v1.20.1 Setup Guide
+# MineBot Combat Grandmaster
 
-A professional Mineflayer-powered bot designed for high-uptime Minecraft server interaction.
+MineBot is a Mineflayer bot for Minecraft Java Edition. This version adds operator-controlled PvP, pathfinding, automatic armor/shield/weapon selection, emergency eating and reconnect handling.
 
----
+## Requirements
 
-## ⚙️ Configuration
-Open `sellinbot.mjs` in a text editor and update these lines with your server details:
+- Node.js 18 or newer
+- Minecraft Java server compatible with Mineflayer
+- A server account for the bot
 
-* `HOST`: The IP address of your Minecraft server.
-* `PORT`: Your server's port (usually 25565 for Java).
-* `USERNAME`: The name your bot will use in-game.
-* `VERSION`: Set to `1.20.1`.
+## Install
 
----
+```bash
+npm install
+```
 
-## 🚀 Installation Instructions
+## Configure
 
-Follow these simple steps to get your bot online:
+Set these environment variables before starting:
 
-1. **Install Node.js:** Download and install the LTS version from the [Official Node.js Website](https://nodejs.org/).
-2. **Download Files:** Save `sellinbot.mjs` and `package.json` into a new folder.
-3. **Open Terminal:** Open your terminal or Command Prompt.
-4. **Navigate:** Use the `cd` command to enter your folder:
-   ```bash
-   cd path/to/your/folder
+| Variable | Required | Default | Purpose |
+|---|---:|---|---|
+| `MC_HOST` | Yes | — | Minecraft server hostname/IP |
+| `MC_PORT` | No | `25565` | Server port |
+| `MC_USERNAME` | No | `MineBot` | Bot account name |
+| `MC_VERSION` | No | `1.20.1` | Minecraft protocol version |
+| `MC_OPERATORS` | Recommended | empty | Comma-separated usernames allowed to issue combat commands |
+
+### Windows CMD example
+
+```bat
+set MC_HOST=your.server.address
+set MC_PORT=25565
+set MC_USERNAME=MineBot
+set MC_VERSION=1.20.1
+set MC_OPERATORS=YourMinecraftName
+npm start
+```
+
+Do not commit account credentials or server passwords to the repository.
+
+## Combat commands
+
+Only usernames listed in `MC_OPERATORS` can control the bot:
+
+- `!fight <player>` — engage a visible player using the PvP plugin
+- `!stop` — stop combat and movement
+- `!gear` — reevaluate and equip the best available armor, shield and melee weapon
+- `!status` — report health, hunger and current target
+- `!help` — list commands
+
+The bot does not attack players automatically. An authorized operator must explicitly start a fight.
+
+## Combat systems
+
+- Mineflayer PvP plugin for target pursuit and melee combat
+- Pathfinder navigation with sprinting and parkour enabled
+- Automatic armor selection for helmet, chestplate, leggings and boots
+- Shield equip attempt in the off-hand
+- Sword/axe selection using material tier, enchantments and remaining durability
+- Emergency food consumption at low health and hunger
+- Reconnect after a dropped connection
+
+## Scope and limitations
+
+This is a strong PvP foundation, not a guaranteed unbeatable or server-proof combat engine. Combat performance depends on server latency, anti-cheat rules, game version, inventory and server plugins. The current combat controller is melee-focused; bow/crossbow aim, projectile prediction, trident-specific tactics, potions, crystal PvP and advanced shield-counter timing are not implemented yet. Test on a private server you control before using it elsewhere.
+
+## Start
+
+```bash
+npm start
+```
