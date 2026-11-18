@@ -51,9 +51,9 @@ Only usernames configured in `MC_OPERATORS` can issue commands.
 The advanced combat module detects whether the inventory contains:
 - Elytra + mace + firework rockets (Elytra-mace kit readiness)
 - End crystals + obsidian (crystal kit readiness)
-- TNT minecart + rail (TNT minecart kit readiness)
+- TNT minecart + activator rail + redstone block (powered TNT minecart kit readiness)
 
-**Experimental execution is now present in `special-combat.mjs`.** Spear charge, a descending mace strike, a basic Elytra launch/boost/dive attempt, end-crystal placement/attack, and TNT-minecart rail/cart placement/trigger attempts are wired into the bot. Spear charge and eligible mace strikes can be attempted automatically during combat; Elytra-mace and explosive attacks are operator-triggered with `!special`.
+**Experimental execution is now present in `special-combat.mjs`.** Spear charge, a descending mace strike, a basic Elytra launch/boost/dive attempt, end-crystal placement/attack, and TNT-minecart redstone-block, powered activator-rail and cart placement/trigger attempts are wired into the bot. Spear charge and eligible mace strikes can be attempted automatically during combat; Elytra-mace and explosive attacks are operator-triggered with `!special`.
 
 ## Known limitations
 
@@ -61,7 +61,7 @@ The advanced combat module detects whether the inventory contains:
 - Spear charge timing is a fixed experimental hold, not a server-tick-calibrated charge controller; spear jab/charge mechanics may differ with server plugins.
 - Mace execution attacks only when already descending toward a lower target. It does not yet create reliable jump setups or chain Wind Burst launches.
 - Elytra control uses ordinary movement inputs, a basic rocket boost and target look tracking. It is not a full flight dynamics controller and may fail to launch or recover on some servers.
-- Crystal and TNT minecart placement/trigger actions are experimental. Explosion checks use Mineflayer's blast-damage estimator with raw/unarmoured damage enabled, including its block-exposure estimate. If that calculation is unavailable, the controller falls back to a conservative full-exposure upper bound. Armour, resistance, enchantment reductions, knockback and Paper-specific explosion changes are not credited.
+- Crystal and TNT minecart placement/trigger actions are experimental. TNT minecart triggering uses a powered activator rail and requires a redstone block, activator rail and TNT minecart. Explosion checks use Mineflayer's blast-damage estimator with raw/unarmoured damage enabled, including its block-exposure estimate. If that calculation is unavailable, the controller falls back to a conservative full-exposure upper bound. Armour, resistance, enchantment reductions, knockback and Paper-specific explosion changes are not credited.
 - Explosive actions are disabled by default. Set `MC_ENABLE_EXPLOSIVES=true` only on a private test server where you have permission. `MC_MAX_SELF_BLAST_DAMAGE` defaults to 4 health points (2 hearts) on Minecraft's 0–20 scale; the check also requires more than 2 health to remain.
 - Potion use, crossbow NBT handling and bow leading are preliminary and must be verified against the target server.
 - Paper plugins, anti-cheat, latency and server configuration can change combat outcomes and item behavior.
