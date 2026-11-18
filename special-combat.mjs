@@ -172,15 +172,22 @@ export class SpecialCombatController {
 
   async startElytraMace(target) {
     if (this.busy || Date.now() - this.lastElytraAt < 12000 || !target?.isValid) return false;
-    if (!this.getItem('elytra') || !this.getItem('mace') || !this.getItem('firework_rocket')) return false;
+    const elytra = this.getItem('elytra');
+    const mace = this.getItem('mace');
+    const chestplate = this.inventory.find(item => /_(?:chestplate)$/.test(item.name));
+    if (!elytra || !mace || !chestplate || !this.getItem('firework_rocket')) return false;
+
     this.busy = true;
     this.lastElytraAt = Date.now();
     const token = this.generation;
+    let attacked = false;
     try {
       this.bot.pvp.stop();
-      await this.bot.equip('elytra', 'torso');
+      await this.bot.equip(elytra, 'torso');
       if (token !== this.generation) return false;
-      // Jump off the ground, then ask Mineflayer to send the vanilla start-gliding action.
+
+      // Launch and enter Elytra flight. Keep the target tracked while gaining
+      // enough horizontal speed to line up a controlled downward approach.
       this.bot.setControlState('forward', true);
       this.bot.setControlState('jump', true);
       await sleep(140);
@@ -189,19 +196,50 @@ export class SpecialCombatController {
       if (token !== this.generation) return false;
       await this.bot.elytraFly();
       this.flightMode = true;
-      const deadline = Date.now() + 6500;
-      while (token === this.generation && Date.now() < deadline && target.isValid && this.bot.entity) {
+
+      const flightDeadline = Date.now() + 7000;
+      while (token === this.generation && Date.now() < flightDeadline &&
+             target.isValid && this.bot.entity) {
         const d = distance(this.bot.entity.position, target.position);
-        const aim = target.position.offset(0, 0.8, 0);
-        await this.bot.lookAt(aim, true);
-        if (token !== this.generation) break;
+        const verticalGap = this.bot.entity.position.y - target.position.y;
         const vy = this.bot.entity.velocity?.y ?? 0;
-        if (vy < -0.25 && d < 5) {
-          await this.equip('mace', 'hand');
-          if (d < 4.5 && target.isValid) this.bot.attack(target);
+
+        await this.bot.lookAt(target.position.offset(0, 0.8, 0), true);
+        if (token !== this.generation) break;
+
+        // Do not swap out of the Elytra until the bot is actually diving
+        // toward a lower target and has entered the approach window.
+        if (vy < -0.2 && verticalGap > 1.5 && d <= 7) {
+          // Chestplate replaces the Elytra, ending glide but preserving the
+          // downward momentum needed for the mace smash.
+          await this.bot.equip(chestplate, 'torso');
+          if (token !== this.generation) return false;
+          await this.bot.equip(mace, 'hand');
+          if (token !== this.generation) return false;
+
+          const impactDeadline = Date.now() + 1800;
+          while (token === this.generation && Date.now() < impactDeadline &&
+                 target.isValid && this.bot.entity) {
+            const impactDistance = distance(this.bot.entity.position, target.position);
+            const fallingSpeed = this.bot.entity.velocity?.y ?? 0;
+            await this.bot.lookAt(target.position.offset(0, 0.85, 0), true);
+            if (token !== this.generation) break;
+
+            // Attack only in close range while still descending. Never swing
+            // merely because the bot is gliding past or has started rising.
+            if (fallingSpeed < -0.12 && impactDistance <= 3.5) {
+              this.bot.attack(target);
+              attacked = true;
+              break;
+            }
+            await sleep(40);
+          }
           break;
         }
-        if (Date.now() - this.lastRocketAt > 1600 && d > 7 && vy < 0.1) {
+
+        // Boost only while still closing distance; avoid firing a rocket
+        // after the chestplate/mace impact phase has started.
+        if (d > 7 && Date.now() - this.lastRocketAt > 1600 && vy < 0.1) {
           await this.equip('firework_rocket', 'hand');
           this.bot.activateItem();
           await sleep(100);
@@ -209,9 +247,9 @@ export class SpecialCombatController {
           this.lastRocketAt = Date.now();
         }
         this.bot.setControlState('forward', true);
-        await sleep(100);
+        await sleep(80);
       }
-      return true;
+      return attacked;
     } catch (error) {
       try { this.bot.deactivateItem(); } catch {}
       this.bot.emit('error', error);
@@ -351,7 +389,7 @@ export class SpecialCombatController {
     const spear = inventory.find(item => /_spear$/.test(item.name));
     if (spear && d >= 2.2 && d <= 6.2 && Date.now() - this.lastSpearAt >= 1800) return this.spearCharge(target);
     if (has('mace') && vy < -0.18 && dy < -1.4 && d <= 5.5 && Date.now() - this.lastMaceAt >= 900) return this.maceSmash(target);
-    if (has('elytra') && has('mace') && has('firework_rocket') && d > 8 && dy < -3 && !this.bot.entity.onGround && Date.now() - this.lastElytraAt >= 12000) return this.startElytraMace(target);
+    if (has('elytra') && has('mace') && inventory.some(item => /_chestplate$/.test(item.name)) && has('firework_rocket') && d > 8 && dy < -3 && !this.bot.entity.onGround && Date.now() - this.lastElytraAt >= 12000) return this.startElytraMace(target);
     // Explosives remain automatic only when explicitly enabled by the server owner.
     if (this.explosiveAttacksEnabled && d <= 5.5 && Date.now() - this.lastExplosiveAt >= 2500) {
       if (has('end_crystal') && has('obsidian')) {
