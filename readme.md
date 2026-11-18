@@ -1,72 +1,38 @@
-# MineBot Combat Grandmaster
+# MineBot — Adaptive Combat AI
 
-MineBot is a Mineflayer bot for Minecraft Java Edition. This version adds operator-controlled PvP, pathfinding, automatic armor/shield/weapon selection, emergency eating and reconnect handling.
+MineBot evaluates its actual inventory, selects the best supported melee item, scores armor by material/enchantments/durability, and uses a tactical policy to decide whether to engage, recover or disengage.
 
-## Requirements
+## Install and run (Windows CMD)
 
-- Node.js 18 or newer
-- Minecraft Java server compatible with Mineflayer
-- A server account for the bot
+Requires Node.js 18+.
 
-## Install
-
-```bash
+```cmd
 npm install
-```
-
-## Configure
-
-Set these environment variables before starting:
-
-| Variable | Required | Default | Purpose |
-|---|---:|---|---|
-| `MC_HOST` | Yes | — | Minecraft server hostname/IP |
-| `MC_PORT` | No | `25565` | Server port |
-| `MC_USERNAME` | No | `MineBot` | Bot account name |
-| `MC_VERSION` | No | `1.20.1` | Minecraft protocol version |
-| `MC_OPERATORS` | Recommended | empty | Comma-separated usernames allowed to issue combat commands |
-
-### Windows CMD example
-
-```bat
 set MC_HOST=your.server.address
 set MC_PORT=25565
 set MC_USERNAME=MineBot
 set MC_VERSION=1.20.1
-set MC_OPERATORS=YourMinecraftName
+set MC_OPERATORS=YourMinecraftUsername
 npm start
 ```
 
-Do not commit account credentials or server passwords to the repository.
+## Operator commands
 
-## Combat commands
+- `!fight <player>` — assess health, hunger, distance and loadout, then engage if policy permits.
+- `!stop` — stop combat.
+- `!gear` — rescore and equip armor, shield and best supported melee item.
+- `!analyze` — report tactical assessment.
+- `!status` — report health, hunger and target.
+- `!help` — list commands.
 
-Only usernames listed in `MC_OPERATORS` can control the bot:
+Only usernames configured in `MC_OPERATORS` can issue commands.
 
-- `!fight <player>` — engage a visible player using the PvP plugin
-- `!stop` — stop combat and movement
-- `!gear` — reevaluate and equip the best available armor, shield and melee weapon
-- `!status` — report health, hunger and current target
-- `!help` — list commands
+## Adaptive equipment
 
-The bot does not attack players automatically. An authorized operator must explicitly start a fight.
+The scorer recognizes swords, axes, tridents, maces, pickaxes, shovels and hoes as possible melee items. It weighs item class, material, enchantments and durability. Armor is scored by material, protection enchantments and durability. The bot equips a shield when available and can use weaker tools when better weapons are absent.
 
-## Combat systems
+## Honest limitations
 
-- Mineflayer PvP plugin for target pursuit and melee combat
-- Pathfinder navigation with sprinting and parkour enabled
-- Automatic armor selection for helmet, chestplate, leggings and boots
-- Shield equip attempt in the off-hand
-- Sword/axe selection using material tier, enchantments and remaining durability
-- Emergency food consumption at low health and hunger
-- Reconnect after a dropped connection
+No bot can guarantee victory with every item or against every opponent. An empty inventory, unusable item, broken gear, latency, server anti-cheat or major gear disadvantage can make winning impossible. This release's active combat controller is melee-focused: recognizing a bow/crossbow does not yet mean expert projectile aiming. Crystal PvP, anchor PvP, potion combos and advanced shield-counter timing are not implemented. The decision engine is a transparent rule-based tactical AI, not a trained neural network or LLM.
 
-## Scope and limitations
-
-This is a strong PvP foundation, not a guaranteed unbeatable or server-proof combat engine. Combat performance depends on server latency, anti-cheat rules, game version, inventory and server plugins. The current combat controller is melee-focused; bow/crossbow aim, projectile prediction, trident-specific tactics, potions, crystal PvP and advanced shield-counter timing are not implemented yet. Test on a private server you control before using it elsewhere.
-
-## Start
-
-```bash
-npm start
-```
+Use only where automated combat is allowed. Test on a private server first.
