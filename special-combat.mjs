@@ -42,21 +42,27 @@ export function evaluateBlastSafety({ selfPosition, targetPosition, explosionPos
   return { safe, reason: safe ? 'conservative self-damage limit passed' : 'blast rejected by conservative self-damage limit', selfDamage, targetDamage };
 }
 
-function findCrystalBase(bot, target, maxDistance = 4.5) {
+function findCrystalSpot(bot, target, maxDistance = 4.5) {
   const origin = target.position.floored();
   const candidates = [];
   for (let dx = -4; dx <= 4; dx++) for (let dz = -4; dz <= 4; dz++) {
     for (let dy = -1; dy <= 1; dy++) {
-      const base = bot.blockAt(origin.offset(dx, dy, dz));
-      if (!base || !['obsidian', 'bedrock'].includes(base.name)) continue;
-      const above1 = bot.blockAt(base.position.offset(0, 1, 0));
-      const above2 = bot.blockAt(base.position.offset(0, 2, 0));
-      if (!blockIsAir(above1) || !blockIsAir(above2)) continue;
-      const d = distance(blockCenter(base), target.position);
-      if (d <= maxDistance) candidates.push({ base, d });
+      const pos = origin.offset(dx, dy, dz);
+      const block = bot.blockAt(pos);
+      if (!block) continue;
+      if (['obsidian', 'bedrock'].includes(block.name)) {
+        if (!blockIsAir(bot.blockAt(pos.offset(0, 1, 0))) || !blockIsAir(bot.blockAt(pos.offset(0, 2, 0)))) continue;
+        const d = distance(blockCenter(block), target.position);
+        if (d <= maxDistance) candidates.push({ base: block, support: null, d });
+      } else if (block.boundingBox === 'block') {
+        const basePos = pos.offset(0, 1, 0);
+        if (!blockIsAir(bot.blockAt(basePos)) || !blockIsAir(bot.blockAt(basePos.offset(0, 1, 0))) || !blockIsAir(bot.blockAt(basePos.offset(0, 2, 0)))) continue;
+        const d = distance(basePos.offset(0.5, 0.5, 0.5), target.position);
+        if (d <= maxDistance) candidates.push({ base: null, support: block, basePos, d });
+      }
     }
   }
-  return candidates.sort((a, b) => a.d - b.d)[0]?.base ?? null;
+  return candidates.sort((a, b) => a.d - b.d)[0] ?? null;
 }
 
 function findTntRailSupport(bot, target, maxDistance = 5) {
@@ -216,9 +222,9 @@ export class SpecialCombatController {
     const crystal = this.getItem('end_crystal');
     const obsidian = this.getItem('obsidian');
     if (!crystal || !obsidian) return { ok: false, reason: 'end crystal or obsidian missing' };
-    const base = findCrystalBase(this.bot, target);
-    if (!base) return { ok: false, reason: 'no valid existing obsidian/bedrock crystal base near target' };
-    const explosionPosition = base.position.offset(0.5, 1, 0.5);
+    const spot = findCrystalSpot(this.bot, target);
+    if (!spot) return { ok: false, reason: 'no valid crystal base position near target' };
+    const explosionPosition = (spot.base?.position ?? spot.basePos).offset(0.5, 1, 0.5);
     const selfDamage = this.blastDamage(this.bot.entity, explosionPosition, 6);
     const targetDamage = this.blastDamage(target, explosionPosition, 6);
     if (selfDamage > this.maxSelfDamage || this.bot.health - selfDamage <= 2 || targetDamage < 6) {
@@ -228,6 +234,13 @@ export class SpecialCombatController {
     this.lastExplosiveAt = Date.now();
     try {
       this.bot.pvp.stop();
+      if (spot.support) {
+        await this.bot.equip(obsidian, 'hand');
+        await this.bot.placeBlock(spot.support, topFace());
+        await sleep(120);
+      }
+      const base = this.bot.blockAt(spot.base?.position ?? spot.basePos);
+      if (!base || !['obsidian', 'bedrock'].includes(base.name)) return { ok: false, reason: 'obsidian base placement was not confirmed' };
       await this.bot.equip(crystal, 'hand');
       await this.bot.lookAt(explosionPosition, true);
       await this.bot.activateBlock(base);
@@ -278,7 +291,9 @@ export class SpecialCombatController {
       await this.bot.equip(cart, 'hand');
       await this.bot.activateBlock(placedRail);
       await sleep(300);
-      const minecart = Object.values(this.bot.entities).find(entity =>
+      let minecart;
+      try { minecart = await this.bot.placeEntity(placedRail, topFace()); } catch {}
+      minecart ??= Object.values(this.bot.entities).find(entity =>
         /minecart/.test(entity.name ?? '') && distance(entity.position, explosionPosition) < 2);
       if (!minecart) return { ok: false, reason: 'TNT minecart spawn not confirmed; detonation skipped' };
       const finalSelfDamage = this.blastDamage(this.bot.entity, minecart.position, 8);
