@@ -174,85 +174,113 @@ export class SpecialCombatController {
     if (this.busy || Date.now() - this.lastElytraAt < 12000 || !target?.isValid) return false;
     const elytra = this.getItem('elytra');
     const mace = this.getItem('mace');
-    const chestplate = this.inventory.find(item => /_(?:chestplate)$/.test(item.name));
-    if (!elytra || !mace || !chestplate || !this.getItem('firework_rocket')) return false;
+    const chestplate = this.inventory.find(item => /_chestplate$/.test(item.name));
+    const rocket = this.getItem('firework_rocket');
+    if (!elytra || !mace || !chestplate || !rocket) return false;
 
     this.busy = true;
     this.lastElytraAt = Date.now();
     const token = this.generation;
     let attacked = false;
+    let phase = 'PREPARING';
+    const cancelled = () => token !== this.generation || !this.bot.entity || !target.isValid;
+    const stillFalling = () => (this.bot.entity?.velocity?.y ?? 0) < -0.10 && !this.bot.entity?.onGround;
+    const wait = async (ms) => {
+      await sleep(ms);
+      return !cancelled();
+    };
+
     try {
       this.bot.pvp.stop();
       await this.bot.equip(elytra, 'torso');
-      if (token !== this.generation) return false;
+      if (cancelled()) return false;
 
-      // Launch and enter Elytra flight. Keep the target tracked while gaining
-      // enough horizontal speed to line up a controlled downward approach.
+      // A short jump gives the vanilla Elytra activation packet a valid
+      // falling window. Do not assume the bot is flying until activation works.
+      phase = 'LAUNCH';
       this.bot.setControlState('forward', true);
       this.bot.setControlState('jump', true);
-      await sleep(140);
+      if (!(await wait(180))) return false;
       this.bot.setControlState('jump', false);
-      await sleep(350);
-      if (token !== this.generation) return false;
+      if (!(await wait(260))) return false;
       await this.bot.elytraFly();
-      this.flightMode = true;
 
-      const flightDeadline = Date.now() + 7000;
-      while (token === this.generation && Date.now() < flightDeadline &&
-             target.isValid && this.bot.entity) {
+      phase = 'GLIDE_APPROACH';
+      const flightDeadline = Date.now() + 8500;
+      while (!cancelled() && Date.now() < flightDeadline) {
         const d = distance(this.bot.entity.position, target.position);
         const verticalGap = this.bot.entity.position.y - target.position.y;
         const vy = this.bot.entity.velocity?.y ?? 0;
 
-        await this.bot.lookAt(target.position.offset(0, 0.8, 0), true);
-        if (token !== this.generation) break;
+        await this.bot.lookAt(target.position.offset(0, 0.85, 0), true);
+        if (cancelled()) break;
 
-        // Do not swap out of the Elytra until the bot is actually diving
-        // toward a lower target and has entered the approach window.
-        if (vy < -0.2 && verticalGap > 1.5 && d <= 7) {
-          // Chestplate replaces the Elytra, ending glide but preserving the
-          // downward momentum needed for the mace smash.
+        // Only commit to the swap when the target is below, the bot is
+        // genuinely descending, and the target is close enough to hit soon.
+        if (stillFalling() && vy < -0.20 && verticalGap >= 1.2 && d <= 6.0) {
+          phase = 'CHESTPLATE_SWAP';
+          this.bot.setControlState('forward', false);
           await this.bot.equip(chestplate, 'torso');
-          if (token !== this.generation) return false;
-          await this.bot.equip(mace, 'hand');
-          if (token !== this.generation) return false;
+          if (cancelled()) return false;
 
-          const impactDeadline = Date.now() + 1800;
-          while (token === this.generation && Date.now() < impactDeadline &&
-                 target.isValid && this.bot.entity) {
+          phase = 'MACE_EQUIP';
+          await this.bot.equip(mace, 'hand');
+          if (cancelled()) return false;
+
+          // Re-evaluate live velocity after both equipment operations. If the
+          // swap killed the dive, abort instead of wasting a ground-level swing.
+          if (!stillFalling()) {
+            console.debug('[ELYTRA-MACE] Dive lost during equipment swap; aborting impact.');
+            return false;
+          }
+
+          phase = 'IMPACT_TRACK';
+          const impactDeadline = Date.now() + 1400;
+          while (!cancelled() && Date.now() < impactDeadline) {
             const impactDistance = distance(this.bot.entity.position, target.position);
             const fallingSpeed = this.bot.entity.velocity?.y ?? 0;
-            await this.bot.lookAt(target.position.offset(0, 0.85, 0), true);
-            if (token !== this.generation) break;
+            const targetBelow = this.bot.entity.position.y - target.position.y > 0.4;
 
-            // Attack only in close range while still descending. Never swing
-            // merely because the bot is gliding past or has started rising.
-            if (fallingSpeed < -0.12 && impactDistance <= 3.5) {
+            await this.bot.lookAt(target.position.offset(0, 0.85, 0), true);
+            if (cancelled()) break;
+
+            if (targetBelow && fallingSpeed < -0.10 && impactDistance <= 3.2) {
+              phase = 'MACE_STRIKE';
               this.bot.attack(target);
               attacked = true;
               break;
             }
-            await sleep(40);
+
+            // Stop the attempt if the bot has landed, started rising, or the
+            // target is no longer beneath the dive path.
+            if (!stillFalling() || (this.bot.entity.position.y - target.position.y) < -0.2) break;
+            if (!(await wait(35))) break;
           }
           break;
         }
 
-        // Boost only while still closing distance; avoid firing a rocket
-        // after the chestplate/mace impact phase has started.
-        if (d > 7 && Date.now() - this.lastRocketAt > 1600 && vy < 0.1) {
-          await this.equip('firework_rocket', 'hand');
-          this.bot.activateItem();
-          await sleep(100);
-          this.bot.deactivateItem();
-          this.lastRocketAt = Date.now();
+        // Use a rocket only while still gliding toward a distant target.
+        if (d > 6 && Date.now() - this.lastRocketAt > 1800 && vy < 0.15) {
+          const currentRocket = this.getItem('firework_rocket');
+          if (currentRocket) {
+            await this.bot.equip(currentRocket, 'hand');
+            if (cancelled()) break;
+            this.bot.activateItem();
+            if (!(await wait(90))) break;
+            this.bot.deactivateItem();
+            this.lastRocketAt = Date.now();
+          }
         }
+
         this.bot.setControlState('forward', true);
-        await sleep(80);
+        if (!(await wait(60))) break;
       }
+
+      if (!attacked) console.debug(`[ELYTRA-MACE] Attempt ended in ${phase}; no valid impact window.`);
       return attacked;
     } catch (error) {
       try { this.bot.deactivateItem(); } catch {}
-      this.bot.emit('error', error);
+      console.debug('[ELYTRA-MACE] Flight sequence failed:', error.message);
       return false;
     } finally {
       this.bot.setControlState('forward', false);
