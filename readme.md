@@ -30,15 +30,15 @@ Only usernames configured in `MC_OPERATORS` can issue commands.
 ## Current AI features
 
 - **Inventory-aware equipment:** scores melee weapons and armor using material, enchantments and remaining durability.
-- **Ranged bow mode:** when a bow and arrows are available and the target is far enough away, the bot switches from melee to bow use, draws, and aims ahead using the target's observed velocity.
+- **Ranged mode:** uses a bow or crossbow with arrows at range. Crossbows are charged before firing; both modes use a basic velocity-based lead estimate. Crossbow charge-state detection depends on item NBT and must be tested on the target server.
 - **Opponent adaptation:** tracks a session-local moving-speed estimate per target and uses it when deciding whether to take a long-range shot.
-- **Survival policy:** checks health, hunger and food before choosing to engage, recover or disengage.
+- **Potion support:** at critical health, attempts to drink an inventory healing/regeneration potion (only regular drinkable potions; splash potions are not thrown automatically).\n- **Special-kit inspection:** `!kit` reports whether the inventory has the basic End Crystal + obsidian or respawn-anchor + glowstone ingredients. This is readiness detection only; it does not place explosives.\n- **Survival policy:** checks health, hunger and food before choosing to engage, recover or disengage.
 - **Melee mode:** uses mineflayer-pvp for supported melee combat and pathfinding.
 
 ## Important limitations
 
 This is a heuristic decision system with lightweight session-local adaptation, not a trained neural network or a self-learning model. Bow leading is an estimate and will vary with server tick rate, latency, Minecraft version and target movement. It has not been validated against a live server in this repository workflow.
 
-Crossbow-specific loading/charge handling, potion sequencing, shield-counter timing, crystal PvP, anchor PvP, projectile dodging and persistent learning across restarts are **not implemented**. Maces and tridents may be selected by the melee scorer, but specialized mace wind-charge/fall-damage combos and trident-riptide tactics are not implemented. No system can guarantee a win with every possible inventory or against every opponent; some inventories simply cannot win a given matchup.
+Full crystal PvP and anchor PvP placement/detonation logic, potion effect sequencing, splash-potion throws, shield-counter timing, projectile dodging and persistent learning across restarts are **not implemented**. The crossbow and potion routines are preliminary and require private-server testing; they are not guaranteed to work on every server/version. Maces and tridents may be selected by the melee scorer, but specialized mace wind-charge/fall-damage combos and trident-riptide tactics are not implemented. No system can guarantee a win with every possible inventory or against every opponent; some inventories simply cannot win a given matchup.
 
 Use only on servers where automated combat is allowed. Test on a private server first, and check server rules before deploying.
