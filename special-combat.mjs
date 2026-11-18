@@ -89,6 +89,13 @@ export class SpecialCombatController {
   }
 
   get inventory() { return this.bot.inventory.items(); }
+  blastDamage(entity, position, power) {
+    try {
+      const calculated = this.bot.getExplosionDamages(entity, position, power * 2, true);
+      if (Number.isFinite(calculated)) return calculated;
+    } catch {}
+    return estimateExplosionDamage(distance(entity.position, position), power);
+  }
   getItem(name) { return count(this.inventory, name); }
 
   async equip(name, slot = 'hand') {
@@ -212,8 +219,9 @@ export class SpecialCombatController {
     const base = findCrystalBase(this.bot, target);
     if (!base) return { ok: false, reason: 'no valid existing obsidian/bedrock crystal base near target' };
     const explosionPosition = base.position.offset(0.5, 1, 0.5);
-    const selfDamage = estimateExplosionDamage(distance(this.bot.entity.position, explosionPosition), 6);
-    if (selfDamage > this.maxSelfDamage || this.bot.health - selfDamage <= 2) {
+    const selfDamage = this.blastDamage(this.bot.entity, explosionPosition, 6);
+    const targetDamage = this.blastDamage(target, explosionPosition, 6);
+    if (selfDamage > this.maxSelfDamage || this.bot.health - selfDamage <= 2 || targetDamage < 6) {
       return { ok: false, reason: `crystal rejected: worst-case self damage ${selfDamage.toFixed(1)} exceeds safety budget` };
     }
     this.busy = true;
@@ -227,8 +235,9 @@ export class SpecialCombatController {
       const spawned = Object.values(this.bot.entities).find(entity =>
         entity.name === 'end_crystal' && distance(entity.position, explosionPosition) < 2);
       if (!spawned) return { ok: false, reason: 'crystal placement not confirmed by entity spawn' };
-      const currentSelfDamage = estimateExplosionDamage(distance(this.bot.entity.position, spawned.position), 6);
-      if (currentSelfDamage > this.maxSelfDamage || this.bot.health - currentSelfDamage <= 2) {
+      const currentSelfDamage = this.blastDamage(this.bot.entity, spawned.position, 6);
+      const currentTargetDamage = this.blastDamage(target, spawned.position, 6);
+      if (currentSelfDamage > this.maxSelfDamage || this.bot.health - currentSelfDamage <= 2 || currentTargetDamage < 6) {
         return { ok: false, reason: 'detonation aborted: self-damage safety check failed' };
       }
       if (distance(spawned.position, target.position) > 5) return { ok: false, reason: 'target moved out of crystal blast range' };
@@ -252,8 +261,9 @@ export class SpecialCombatController {
     // TNT minecart blast strength is affected by movement/fuse conditions. Use a
     // deliberately high power estimate; do not infer damage reduction from armour.
     const explosionPosition = candidate.railPos.offset(0.5, 0.5, 0.5);
-    const selfDamage = estimateExplosionDamage(distance(this.bot.entity.position, explosionPosition), 8);
-    if (selfDamage > this.maxSelfDamage || this.bot.health - selfDamage <= 2) {
+    const selfDamage = this.blastDamage(this.bot.entity, explosionPosition, 8);
+    const targetDamage = this.blastDamage(target, explosionPosition, 8);
+    if (selfDamage > this.maxSelfDamage || this.bot.health - selfDamage <= 2 || targetDamage < 6) {
       return { ok: false, reason: `TNT minecart rejected: worst-case self damage ${selfDamage.toFixed(1)} exceeds safety budget` };
     }
     this.busy = true;
@@ -271,8 +281,9 @@ export class SpecialCombatController {
       const minecart = Object.values(this.bot.entities).find(entity =>
         /minecart/.test(entity.name ?? '') && distance(entity.position, explosionPosition) < 2);
       if (!minecart) return { ok: false, reason: 'TNT minecart spawn not confirmed; detonation skipped' };
-      const finalSelfDamage = estimateExplosionDamage(distance(this.bot.entity.position, minecart.position), 8);
-      if (finalSelfDamage > this.maxSelfDamage || this.bot.health - finalSelfDamage <= 2) {
+      const finalSelfDamage = this.blastDamage(this.bot.entity, minecart.position, 8);
+      const finalTargetDamage = this.blastDamage(target, minecart.position, 8);
+      if (finalSelfDamage > this.maxSelfDamage || this.bot.health - finalSelfDamage <= 2 || finalTargetDamage < 6) {
         return { ok: false, reason: 'minecart detonation aborted: self-damage safety check failed' };
       }
       if (distance(minecart.position, target.position) > 6) return { ok: false, reason: 'target moved out of estimated blast range' };
