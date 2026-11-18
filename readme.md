@@ -1,6 +1,6 @@
 # MineBot — Adaptive Combat AI
 
-MineBot evaluates its actual inventory, selects the best supported melee item, scores armor by material/enchantments/durability, and uses a tactical policy to decide whether to engage, recover or disengage.
+MineBot evaluates its actual inventory and target state, then switches between melee engagement, ranged bow attacks and recovery. It is an experimental Mineflayer combat controller, not a guaranteed PvP winner.
 
 ## Install and run (Windows CMD)
 
@@ -16,23 +16,29 @@ set MC_OPERATORS=YourMinecraftUsername
 npm start
 ```
 
-## Operator commands
-
-- `!fight <player>` — assess health, hunger, distance and loadout, then engage if policy permits.
-- `!stop` — stop combat.
-- `!gear` — rescore and equip armor, shield and best supported melee item.
-- `!analyze` — report tactical assessment.
-- `!status` — report health, hunger and target.
-- `!help` — list commands.
-
 Only usernames configured in `MC_OPERATORS` can issue commands.
 
-## Adaptive equipment
+## Operator commands
 
-The scorer recognizes swords, axes, tridents, maces, pickaxes, shovels and hoes as possible melee items. It weighs item class, material, enchantments and durability. Armor is scored by material, protection enchantments and durability. The bot equips a shield when available and can use weaker tools when better weapons are absent.
+- `!fight <player>` — evaluate the target and start the appropriate supported combat mode.
+- `!stop` — stop combat and movement controls.
+- `!gear` — score and equip armor, shield and best melee weapon; report bow/ammo availability.
+- `!analyze` — report the current tactical decision and observed target movement.
+- `!status` — report health, hunger and current target.
+- `!help` — list commands.
 
-## Honest limitations
+## Current AI features
 
-No bot can guarantee victory with every item or against every opponent. An empty inventory, unusable item, broken gear, latency, server anti-cheat or major gear disadvantage can make winning impossible. This release's active combat controller is melee-focused: recognizing a bow/crossbow does not yet mean expert projectile aiming. Crystal PvP, anchor PvP, potion combos and advanced shield-counter timing are not implemented. The decision engine is a transparent rule-based tactical AI, not a trained neural network or LLM.
+- **Inventory-aware equipment:** scores melee weapons and armor using material, enchantments and remaining durability.
+- **Ranged bow mode:** when a bow and arrows are available and the target is far enough away, the bot switches from melee to bow use, draws, and aims ahead using the target's observed velocity.
+- **Opponent adaptation:** tracks a session-local moving-speed estimate per target and uses it when deciding whether to take a long-range shot.
+- **Survival policy:** checks health, hunger and food before choosing to engage, recover or disengage.
+- **Melee mode:** uses mineflayer-pvp for supported melee combat and pathfinding.
 
-Use only where automated combat is allowed. Test on a private server first.
+## Important limitations
+
+This is a heuristic decision system with lightweight session-local adaptation, not a trained neural network or a self-learning model. Bow leading is an estimate and will vary with server tick rate, latency, Minecraft version and target movement. It has not been validated against a live server in this repository workflow.
+
+Crossbow-specific loading/charge handling, potion sequencing, shield-counter timing, crystal PvP, anchor PvP, projectile dodging and persistent learning across restarts are **not implemented**. Maces and tridents may be selected by the melee scorer, but specialized mace wind-charge/fall-damage combos and trident-riptide tactics are not implemented. No system can guarantee a win with every possible inventory or against every opponent; some inventories simply cannot win a given matchup.
+
+Use only on servers where automated combat is allowed. Test on a private server first, and check server rules before deploying.
