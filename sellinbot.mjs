@@ -188,7 +188,7 @@ function createBot() {
     movements.allowParkour = true;
     bot.pathfinder.setMovements(movements);
     await equipBestGear();
-    gearTimer = setInterval(() => { void equipBestGear(); void eatIfNeeded(); void useEmergencyPotion(); }, 4000);
+    gearTimer = setInterval(() => { void eatIfNeeded(); void useEmergencyPotion(); }, 4000);
     combatTimer = setInterval(runCombatDecision, 500);
   });
 
