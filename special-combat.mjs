@@ -311,21 +311,21 @@ export class SpecialCombatController {
       if (token !== this.generation) return { ok: false, reason: 'cancelled before minecart placement' };
       await this.bot.equip(cart, 'hand');
       let minecart;
-      try { minecart = await this.bot.placeEntity(placedRail, topFace()); } catch {}
-      await sleep(500);
-      minecart ??= Object.values(this.bot.entities).find(entity =>
-        /minecart/.test(entity.name ?? '') && distance(entity.position, explosionPosition) < 2);
-      if (token !== this.generation) return { ok: false, reason: 'cancelled before minecart trigger' };
-      if (!minecart) return { ok: true, reason: 'TNT minecart placed on powered activator rail; detonation/entity removal observed' };
+      try { minecart = await this.bot.placeEntity(placedRail, topFace()); } catch (error) {
+        return { ok: false, reason: `TNT minecart placement failed: ${error.message}` };
+      }
+      if (token !== this.generation) return { ok: false, reason: 'cancelled after minecart placement' };
       const finalSelfDamage = this.blastDamage(this.bot.entity, minecart.position, 8);
       const finalTargetDamage = this.blastDamage(target, minecart.position, 8);
       if (finalSelfDamage > this.maxSelfDamage || this.bot.health - finalSelfDamage <= 2 || finalTargetDamage < 6) {
         return { ok: false, reason: 'minecart detonation aborted: self-damage safety check failed' };
       }
       if (distance(minecart.position, target.position) > 6) return { ok: false, reason: 'target moved out of estimated blast range' };
-      // A powered activator rail triggers a TNT minecart. If it remains present,
-      // do not hit it blindly: report that the server did not confirm the fuse.
-      return { ok: false, reason: 'TNT minecart remains on the rail; detonation was not confirmed' };
+      // A powered activator rail triggers a TNT minecart after a short delay.
+      await sleep(500);
+      if (token !== this.generation) return { ok: false, reason: 'cancelled while waiting for minecart detonation' };
+      if (!this.bot.entities[minecart.id]) return { ok: true, reason: 'TNT minecart disappeared after powered activator-rail trigger; explosion likely occurred' };
+      return { ok: false, reason: 'TNT minecart remains on the rail; server did not confirm detonation' };
     } catch (error) {
       return { ok: false, reason: `TNT minecart action failed: ${error.message}` };
     } finally {
