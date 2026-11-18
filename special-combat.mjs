@@ -32,14 +32,12 @@ export function estimateExplosionDamage(distanceBlocks, power) {
   return ((impact * impact + impact) / 2) * 7 * radius + 1;
 }
 
-export function evaluateBlastSafety({ selfPosition, targetPosition, power, selfHealth, maxSelfDamage = 4, minTargetDamage = 6 }) {
-  if (!selfPosition || !targetPosition || !Number.isFinite(selfHealth)) {
-    return { safe: false, reason: 'missing entity position or health data', selfDamage: Infinity, targetDamage: 0 };
+export function evaluateBlastSafety({ selfPosition, targetPosition, explosionPosition, power, selfHealth, maxSelfDamage = 4, minTargetDamage = 6 }) {
+  if (!selfPosition || !targetPosition || !explosionPosition || !Number.isFinite(selfHealth)) {
+    return { safe: false, reason: 'missing entity position, explosion position or health data', selfDamage: Infinity, targetDamage: 0 };
   }
-  const selfDamage = estimateExplosionDamage(distance(selfPosition, targetPosition), power);
-  const targetDamage = estimateExplosionDamage(distance(targetPosition, targetPosition), power);
-  // Target damage above is only a theoretical centre-point upper bound. Callers
-  // must separately verify that the target is close to the explosion location.
+  const selfDamage = estimateExplosionDamage(distance(selfPosition, explosionPosition), power);
+  const targetDamage = estimateExplosionDamage(distance(targetPosition, explosionPosition), power);
   const safe = selfDamage <= maxSelfDamage && selfHealth - selfDamage > 2 && targetDamage >= minTargetDamage;
   return { safe, reason: safe ? 'conservative self-damage limit passed' : 'blast rejected by conservative self-damage limit', selfDamage, targetDamage };
 }
@@ -162,8 +160,13 @@ export class SpecialCombatController {
       // Start gliding with a jump input while airborne. The controller does not
       // teleport or force server state; it relies on vanilla client movement.
       this.bot.setControlState('forward', true);
+      // Jump, then issue the airborne jump input to request vanilla Elytra glide.
       this.bot.setControlState('jump', true);
-      await sleep(180);
+      await sleep(140);
+      this.bot.setControlState('jump', false);
+      await sleep(260);
+      this.bot.setControlState('jump', true);
+      await sleep(140);
       this.bot.setControlState('jump', false);
       this.flightMode = true;
       const deadline = Date.now() + 6500;
