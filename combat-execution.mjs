@@ -1,11 +1,8 @@
 // Executable advanced combat controllers for Mineflayer / Java 1.21.11.
 // Fail-closed design: explosive actions are skipped if damage cannot be estimated safely.
-import { Vec3 } from 'vec3';
-
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
 const dist = (a, b) => a.distanceTo(b);
-const center = p => new Vec3(Math.floor(p.x) + 0.5, Math.floor(p.y) + 0.5, Math.floor(p.z) + 0.5);
 
 export class CombatExecution {
   constructor(bot, { inventory, getTargetName, minHealthAfterBlast = 5, maxSelfBlastDamage = 6 } = {}) {
@@ -21,6 +18,8 @@ export class CombatExecution {
     this.lastMaceAt = 0;
     this.lastExplosiveAt = 0;
     this.flightTarget = null;
+    this.steering = false;
+    this.lastModeAttempt = new Map();
     this._tick = () => this._steerFlight();
     bot.on('physicsTick', this._tick);
   }
@@ -140,13 +139,15 @@ export class CombatExecution {
   }
 
   async _steerFlight() {
-    if (!this.flightActive || !this.bot.entity) return;
+    if (!this.flightActive || !this.bot.entity || this.steering) return;
+    this.steering = true;
     const targetName = this.flightTarget;
     const target = targetName ? this.bot.players[targetName]?.entity : null;
     if (!this.targetValid(target)) {
       this.flightActive = false;
       this.flightTarget = null;
       this.bot.clearControlStates();
+      this.steering = false;
       return;
     }
     const bot = this.bot;
@@ -178,6 +179,8 @@ export class CombatExecution {
       this.flightActive = false;
       this.flightTarget = null;
       bot.clearControlStates();
+    } finally {
+      this.steering = false;
     }
   }
 
@@ -237,8 +240,9 @@ export class CombatExecution {
     const origin = target.position.floored();
     for (let x = -4; x <= 4; x++) for (let y = -2; y <= 2; y++) for (let z = -4; z <= 4; z++) {
       const rail = bot.blockAt(origin.offset(x, y, z));
-      if (rail?.name === 'powered_activator_rail' && dist(rail.position, target.position) <= 5)
-        return rail;
+      const powered = rail?.name === 'powered_activator_rail' ||
+        (rail?.name === 'activator_rail' && rail.getProperties?.().powered === true);
+      if (powered && dist(rail.position, target.position) <= 5) return rail;
     }
     return null;
   }
@@ -274,6 +278,9 @@ export class CombatExecution {
   }
 
   async execute(mode, target) {
+    const last = this.lastModeAttempt.get(mode) ?? 0;
+    if (Date.now() - last < 1000) return { ok: false, reason: 'Advanced-action cooldown' };
+    this.lastModeAttempt.set(mode, Date.now());
     switch (mode) {
       case 'spear-charge': return this.spearCharge(target);
       case 'mace-smash': return this.maceSmash(target);
