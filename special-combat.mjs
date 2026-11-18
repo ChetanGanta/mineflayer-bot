@@ -177,17 +177,14 @@ export class SpecialCombatController {
       this.bot.pvp.stop();
       await this.bot.equip('elytra', 'torso');
       if (token !== this.generation) return false;
-      // Start gliding with a jump input while airborne. The controller does not
-      // teleport or force server state; it relies on vanilla client movement.
+      // Jump off the ground, then ask Mineflayer to send the vanilla start-gliding action.
       this.bot.setControlState('forward', true);
-      // Jump, then issue the airborne jump input to request vanilla Elytra glide.
       this.bot.setControlState('jump', true);
       await sleep(140);
       this.bot.setControlState('jump', false);
-      await sleep(260);
-      this.bot.setControlState('jump', true);
-      await sleep(140);
-      this.bot.setControlState('jump', false);
+      await sleep(350);
+      if (token !== this.generation) return false;
+      await this.bot.elytraFly();
       this.flightMode = true;
       const deadline = Date.now() + 6500;
       while (token === this.generation && Date.now() < deadline && target.isValid && this.bot.entity) {
