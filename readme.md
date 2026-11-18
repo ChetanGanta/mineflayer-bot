@@ -41,7 +41,7 @@ Only usernames configured in `MC_OPERATORS` can issue commands.
 ## Weapon intelligence
 
 - **Sword / axe:** standard melee scoring; axe receives a situational preference against shield users when that state is known.
-- **Spear (1.21.11):** detects wood, stone, copper, iron, gold, diamond and netherite spear item names. The standard Mineflayer PvP attack path performs the jab-style attack. Contextual selection prefers its longer reach band and avoids selecting it when the target is too close.
+- **Spear (1.21.11):** detects wood, stone, copper, iron, gold, diamond and netherite spear item names. MineBot attempts a timed secondary-use charge inside a configured reach window, with cooldown protection. The hold duration is experimental and needs validation against the exact Paper spear implementation.
 - **Mace:** scores Density, Breach and Wind Burst enchantments. It receives a strong selection bonus only while the bot is descending toward a lower target, within a limited distance.
 - **Trident:** included in melee selection; specialised Riptide/loyalty timing is not implemented.
 - **Bow / crossbow:** basic projectile lead and preliminary crossbow charge handling.
@@ -61,8 +61,8 @@ The advanced combat module detects whether the inventory contains:
 - Spear charge timing is a fixed experimental hold, not a server-tick-calibrated charge controller; spear jab/charge mechanics may differ with server plugins.
 - Mace execution attacks only when already descending toward a lower target. It does not yet create reliable jump setups or chain Wind Burst launches.
 - Elytra control uses ordinary movement inputs, a basic rocket boost and target look tracking. It is not a full flight dynamics controller and may fail to launch or recover on some servers.
-- Crystal and TNT minecart placement/trigger actions are experimental. Explosion checks use a conservative unarmoured maximum-damage estimate with full exposure; this can reject attacks that would be safe behind cover. It does not model exact block exposure, armour, resistance, enchantments, knockback or Paper-specific explosion changes.
-- Explosive actions are disabled by default. Set `MC_ENABLE_EXPLOSIVES=true` only on a private test server where you have permission. `MC_MAX_SELF_BLAST_DAMAGE` defaults to 4 hearts/health points on Minecraft's 0–20 scale; the check also requires more than 2 health to remain.
+- Crystal and TNT minecart placement/trigger actions are experimental. Explosion checks use Mineflayer's blast-damage estimator with raw/unarmoured damage enabled, including its block-exposure estimate. If that calculation is unavailable, the controller falls back to a conservative full-exposure upper bound. Armour, resistance, enchantment reductions, knockback and Paper-specific explosion changes are not credited.
+- Explosive actions are disabled by default. Set `MC_ENABLE_EXPLOSIVES=true` only on a private test server where you have permission. `MC_MAX_SELF_BLAST_DAMAGE` defaults to 4 health points (2 hearts) on Minecraft's 0–20 scale; the check also requires more than 2 health to remain.
 - Potion use, crossbow NBT handling and bow leading are preliminary and must be verified against the target server.
 - Paper plugins, anti-cheat, latency and server configuration can change combat outcomes and item behavior.
 - No bot can guarantee a win against every opponent or with every possible inventory.
