@@ -1,17 +1,23 @@
-# MineBot — Adaptive Combat AI
+# MineBot — Experimental Adaptive Combat AI (Java 1.21.11)
 
-MineBot evaluates its actual inventory and target state, then switches between melee engagement, ranged bow attacks and recovery. It is an experimental Mineflayer combat controller, not a guaranteed PvP winner.
+MineBot is an experimental Mineflayer bot for Minecraft Java Edition 1.21.11. It evaluates inventory, health, distance and target movement, then selects a weapon and a combat mode. It is not a guaranteed PvP winner.
+
+## Environment
+
+- Minecraft Java Edition: 1.21.11
+- Server target: Paper 1.21.11
+- Node.js: 18+
+- Mineflayer: pinned to 4.35.0, the release that added 1.21.11 protocol support
+- The bot has not yet been validated in a live Paper 1.21.11 combat session. Verify connection, item metadata and actions on a private test server first.
 
 ## Install and run (Windows CMD)
-
-Requires Node.js 18+.
 
 ```cmd
 npm install
 set MC_HOST=your.server.address
 set MC_PORT=25565
 set MC_USERNAME=MineBot
-set MC_VERSION=1.20.1
+set MC_VERSION=1.21.11
 set MC_OPERATORS=YourMinecraftUsername
 npm start
 ```
@@ -20,25 +26,40 @@ Only usernames configured in `MC_OPERATORS` can issue commands.
 
 ## Operator commands
 
-- `!fight <player>` — evaluate the target and start the appropriate supported combat mode.
+- `!fight <player>` — start an adaptive fight against a visible player.
 - `!stop` — stop combat and movement controls.
-- `!gear` — score and equip armor, shield and best melee weapon; report bow/ammo availability.
-- `!analyze` — report the current tactical decision and observed target movement.
+- `!gear` — equip the best currently-scored armor and weapon; report ranged options.
+- `!kit` — inspect spear, mace, Elytra/rocket, crystal/obsidian, TNT minecart/rail, potion and crossbow readiness.
+- `!analyze` — show the current tactical and advanced-mode assessment.
 - `!status` — report health, hunger and current target.
 - `!help` — list commands.
 
-## Current AI features
+## Weapon intelligence
 
-- **Inventory-aware equipment:** scores melee weapons and armor using material, enchantments and remaining durability.
-- **Ranged mode:** uses a bow or crossbow with arrows at range. Crossbows are charged before firing; both modes use a basic velocity-based lead estimate. Crossbow charge-state detection depends on item NBT and must be tested on the target server.
-- **Opponent adaptation:** tracks a session-local moving-speed estimate per target and uses it when deciding whether to take a long-range shot.
-- **Potion support:** at critical health, attempts to drink an inventory healing/regeneration potion (only regular drinkable potions; splash potions are not thrown automatically).\n- **Special-kit inspection:** `!kit` reports whether the inventory has the basic End Crystal + obsidian or respawn-anchor + glowstone ingredients. This is readiness detection only; it does not place explosives.\n- **Survival policy:** checks health, hunger and food before choosing to engage, recover or disengage.
-- **Melee mode:** uses mineflayer-pvp for supported melee combat and pathfinding.
+- **Sword / axe:** standard melee scoring; axe receives a situational preference against shield users when that state is known.
+- **Spear (1.21.11):** detects wood, stone, copper, iron, gold, diamond and netherite spear item names. The standard Mineflayer PvP attack path performs the jab-style attack. Contextual selection prefers its longer reach band and avoids selecting it when the target is too close.
+- **Mace:** scores Density, Breach and Wind Burst enchantments. It receives a strong selection bonus only while the bot is descending toward a lower target, within a limited distance.
+- **Trident:** included in melee selection; specialised Riptide/loyalty timing is not implemented.
+- **Bow / crossbow:** basic projectile lead and preliminary crossbow charge handling.
 
-## Important limitations
+## Advanced-kit assessment
 
-This is a heuristic decision system with lightweight session-local adaptation, not a trained neural network or a self-learning model. Bow leading is an estimate and will vary with server tick rate, latency, Minecraft version and target movement. It has not been validated against a live server in this repository workflow.
+The advanced combat module detects whether the inventory contains:
+- Elytra + mace + firework rockets (Elytra-mace kit readiness)
+- End crystals + obsidian (crystal kit readiness)
+- TNT minecart + rail (TNT minecart kit readiness)
 
-Full crystal PvP and anchor PvP placement/detonation logic, potion effect sequencing, splash-potion throws, shield-counter timing, projectile dodging and persistent learning across restarts are **not implemented**. The crossbow and potion routines are preliminary and require private-server testing; they are not guaranteed to work on every server/version. Maces and tridents may be selected by the melee scorer, but specialized mace wind-charge/fall-damage combos and trident-riptide tactics are not implemented. No system can guarantee a win with every possible inventory or against every opponent; some inventories simply cannot win a given matchup.
+**Readiness is not execution.** The current code does not yet perform reliable Elytra flight control, dive timing, mace wind-burst chaining, crystal placement/detonation, TNT minecart placement/detonation, blast damage simulation, or safe explosive sequencing. It deliberately does not trigger explosive actions merely because the items are present.
 
-Use only on servers where automated combat is allowed. Test on a private server first, and check server rules before deploying.
+## Known limitations
+
+- The combat policy is deterministic heuristic logic with session-local opponent speed tracking, not a trained neural network or persistent learning system.
+- Spear charge attacks (secondary-use kinetic charge), jab cooldown scheduling, and velocity/angle optimisation are not automated yet; spear selection currently uses the normal attack path.
+- Mace smash selection is a tactical hint. Full jump/fall setup, Wind Burst chaining and server-tick-perfect smash timing are not implemented.
+- Elytra flight, firework boosting, target dive tracking and safe recovery are not implemented.
+- Crystal PvP and TNT minecarting are inventory-readiness checks only. No placement, ignition, detonation or explosion prediction is implemented.
+- Potion use, crossbow NBT handling and bow leading are preliminary and must be verified against the target server.
+- Paper plugins, anti-cheat, latency and server configuration can change combat outcomes and item behavior.
+- No bot can guarantee a win against every opponent or with every possible inventory.
+
+Use only on servers where automated combat is permitted. Test on a private Paper server and review the server's rules before deploying.
