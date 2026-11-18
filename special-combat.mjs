@@ -4,7 +4,6 @@
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
-const horizontalDistance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 const distance = (a, b) => a.distanceTo(b);
 const AIR = new Set(['air', 'cave_air', 'void_air']);
 
@@ -70,12 +69,13 @@ function findTntRailSupport(bot, target, maxDistance = 5) {
   const candidates = [];
   for (let dx = -4; dx <= 4; dx++) for (let dz = -4; dz <= 4; dz++) {
     for (let dy = -1; dy <= 1; dy++) {
-      const railPos = origin.offset(dx, dy, dz);
-      const railBlock = bot.blockAt(railPos);
-      const support = bot.blockAt(railPos.offset(0, -1, 0));
-      if (!blockIsAir(railBlock) || !support || support.boundingBox !== 'block') continue;
+      const redstonePos = origin.offset(dx, dy, dz);
+      const redstoneSpace = bot.blockAt(redstonePos);
+      const support = bot.blockAt(redstonePos.offset(0, -1, 0));
+      const railPos = redstonePos.offset(0, 1, 0);
+      if (!blockIsAir(redstoneSpace) || !blockIsAir(bot.blockAt(railPos)) || !support || support.boundingBox !== 'block') continue;
       const d = distance(railPos.offset(0.5, 0.5, 0.5), target.position);
-      if (d <= maxDistance) candidates.push({ railPos, support, d });
+      if (d <= maxDistance) candidates.push({ redstonePos, railPos, support, d });
     }
   }
   return candidates.sort((a, b) => a.d - b.d)[0] ?? null;
@@ -279,12 +279,13 @@ export class SpecialCombatController {
     if (!this.explosiveAttacksEnabled) return { ok: false, reason: 'explosive attacks are disabled; enable explicitly after private-server testing' };
     if (this.busy || Date.now() - this.lastExplosiveAt < 3000 || !target?.isValid) return { ok: false, reason: 'controller busy or cooldown' };
     const cart = this.getItem('tnt_minecart');
-    const rail = this.getItem('rail');
-    if (!cart || !rail) return { ok: false, reason: 'TNT minecart or rail missing' };
+    const rail = this.getItem('activator_rail');
+    const redstone = this.getItem('redstone_block');
+    if (!cart || !rail || !redstone) return { ok: false, reason: 'TNT minecart, activator rail and redstone block are required' };
     const candidate = findTntRailSupport(this.bot, target);
     if (!candidate) return { ok: false, reason: 'no valid rail placement position near target' };
-    // TNT minecart blast strength is affected by movement/fuse conditions. Use a
-    // deliberately high power estimate; do not infer damage reduction from armour.
+    // A powered activator rail is used as the deterministic vanilla trigger.
+    // Keep a high blast-power estimate because server implementations can vary.
     const explosionPosition = candidate.railPos.offset(0.5, 0.5, 0.5);
     const selfDamage = this.blastDamage(this.bot.entity, explosionPosition, 8);
     const targetDamage = this.blastDamage(target, explosionPosition, 8);
@@ -296,32 +297,35 @@ export class SpecialCombatController {
     this.lastExplosiveAt = Date.now();
     try {
       this.bot.pvp.stop();
-      await this.bot.equip(rail, 'hand');
+      await this.bot.equip(redstone, 'hand');
       await this.bot.placeBlock(candidate.support, topFace());
       await sleep(100);
-      if (token !== this.generation) return { ok: false, reason: 'cancelled before minecart placement' };
+      if (token !== this.generation) return { ok: false, reason: 'cancelled before activator rail setup' };
+      const redstoneBlock = this.bot.blockAt(candidate.redstonePos);
+      if (!redstoneBlock || redstoneBlock.name !== 'redstone_block') return { ok: false, reason: 'redstone block placement not confirmed' };
+      await this.bot.equip(rail, 'hand');
+      await this.bot.placeBlock(redstoneBlock, topFace());
+      await sleep(100);
       const placedRail = this.bot.blockAt(candidate.railPos);
-      if (!placedRail || !placedRail.name.includes('rail')) return { ok: false, reason: 'rail placement not confirmed' };
+      if (!placedRail || placedRail.name !== 'activator_rail') return { ok: false, reason: 'powered activator rail placement not confirmed' };
+      if (token !== this.generation) return { ok: false, reason: 'cancelled before minecart placement' };
       await this.bot.equip(cart, 'hand');
-      await this.bot.activateBlock(placedRail);
-      await sleep(300);
       let minecart;
       try { minecart = await this.bot.placeEntity(placedRail, topFace()); } catch {}
+      await sleep(500);
       minecart ??= Object.values(this.bot.entities).find(entity =>
         /minecart/.test(entity.name ?? '') && distance(entity.position, explosionPosition) < 2);
       if (token !== this.generation) return { ok: false, reason: 'cancelled before minecart trigger' };
-      if (!minecart) return { ok: false, reason: 'TNT minecart spawn not confirmed; detonation skipped' };
+      if (!minecart) return { ok: true, reason: 'TNT minecart placed on powered activator rail; detonation/entity removal observed' };
       const finalSelfDamage = this.blastDamage(this.bot.entity, minecart.position, 8);
       const finalTargetDamage = this.blastDamage(target, minecart.position, 8);
       if (finalSelfDamage > this.maxSelfDamage || this.bot.health - finalSelfDamage <= 2 || finalTargetDamage < 6) {
         return { ok: false, reason: 'minecart detonation aborted: self-damage safety check failed' };
       }
       if (distance(minecart.position, target.position) > 6) return { ok: false, reason: 'target moved out of estimated blast range' };
-      // Attack the placed TNT minecart to trigger its fuse. Server rules/plugins
-      // may cancel this; no claim of detonation is made until the entity disappears.
-      this.bot.attack(minecart);
-      await sleep(250);
-      return { ok: true, reason: 'TNT minecart trigger attack sent after safety checks' };
+      // A powered activator rail triggers a TNT minecart. If it remains present,
+      // do not hit it blindly: report that the server did not confirm the fuse.
+      return { ok: false, reason: 'TNT minecart remains on the rail; detonation was not confirmed' };
     } catch (error) {
       return { ok: false, reason: `TNT minecart action failed: ${error.message}` };
     } finally {
