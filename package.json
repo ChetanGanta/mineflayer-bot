@@ -2,10 +2,10 @@
   "name": "minebot-service",
   "version": "2.0.0",
   "description": "Experimental adaptive Minecraft Java 1.21.11 combat bot",
-  "main": "sellinbot.mjs",
+  "main": "bot.mjs",
   "type": "module",
   "scripts": {
-    "start": "node sellinbot.mjs"
+    "start": "node bot.mjs"
   },
   "dependencies": {
     "mineflayer": "4.35.0",
