@@ -71,7 +71,7 @@ export function assessAdvancedKit(items) {
   const hasElytra = names.has('elytra');
   const hasFirework = names.has('firework_rocket');
   const hasCrystalKit = names.has('end_crystal') && names.has('obsidian');
-  const hasMinecartKit = names.has('tnt_minecart') && names.has('rail');
+  const hasMinecartKit = names.has('tnt_minecart') && names.has('activator_rail') && names.has('redstone_block');
   return {
     spear: items.some(item => classifyWeapon(item) === 'spear'),
     mace: items.some(item => classifyWeapon(item) === 'mace'),
@@ -83,7 +83,9 @@ export function assessAdvancedKit(items) {
     obsidian: names.has('obsidian'),
     endCrystal: names.has('end_crystal'),
     tntMinecart: names.has('tnt_minecart'),
-    rail: names.has('rail')
+    rail: names.has('rail') || names.has('activator_rail'),
+    activatorRail: names.has('activator_rail'),
+    redstoneBlock: names.has('redstone_block')
   };
 }
 
