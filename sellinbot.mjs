@@ -25,6 +25,7 @@ function createBot() {
   const bot = mineflayer.createBot({ host: HOST, port: PORT, username: USERNAME, version: VERSION });
   let activeTarget = null;
   let gearBusy = false;
+  let weaponSwitchBusy = false;
   let eating = false;
   let rangedBusy = false;
   let potionBusy = false;
@@ -181,8 +182,11 @@ function createBot() {
       closingSpeed: Math.hypot(target.velocity?.x ?? 0, target.velocity?.z ?? 0),
       opponentHasShield: false
     });
-    if (contextualWeapon && held?.name !== contextualWeapon.name && !gearBusy) {
-      void bot.equip(contextualWeapon, 'hand').catch(error => console.debug('Weapon switch skipped:', error.message));
+    if (contextualWeapon && held?.name !== contextualWeapon.name && !gearBusy && !weaponSwitchBusy) {
+      weaponSwitchBusy = true;
+      void bot.equip(contextualWeapon, 'hand')
+        .catch(error => console.debug('Weapon switch skipped:', error.message))
+        .finally(() => { weaponSwitchBusy = false; });
     }
     const plan = assess(target);
     if (plan.mode === 'ranged') {
@@ -241,7 +245,7 @@ function createBot() {
         const weapon = await equipBestGear();
         const bow = chooseBestBow(items());
         const crossbow = chooseCrossbow(items());
-        bot.chat(`Loadout: melee ${weapon?.name ?? 'none'} | bow ${bow?.name ?? 'none'} | crossbow ${crossbow?.name ?? 'none'} | arrows ${hasArrows(items()) ? 'yes' : 'no'}.`);
+        bot.chat(`Loadout: melee ${weapon?.name ?? 'none'} (${classifyWeapon(weapon) ?? 'none'}) | bow ${bow?.name ?? 'none'} | crossbow ${crossbow?.name ?? 'none'} | arrows ${hasArrows(items()) ? 'yes' : 'no'}.`);
         break;
       }
       case '!kit': {
@@ -252,8 +256,9 @@ function createBot() {
       case '!analyze': {
         const target = activeTarget ? bot.players[activeTarget]?.entity : null;
         const plan = assess(target);
+        const special = target ? chooseAdvancedMode({ target, distance: bot.entity.position.distanceTo(target.position), botPosition: bot.entity.position, botVelocity: bot.entity.velocity, inventory: items() }) : null;
         const profile = target ? opponentProfiles.get(activeTarget) : null;
-        bot.chat(`AI: ${plan.mode}; ${plan.reason}; HP ${Math.round(bot.health)}/20; hunger ${Math.round(bot.food)}/20; target avg speed ${(profile?.averageSpeed ?? 0).toFixed(2)}.`);
+        bot.chat(`AI: ${plan.mode}; advanced: ${special?.mode ?? 'idle'}; ${special?.reason ?? 'no target'}; ${plan.reason}; HP ${Math.round(bot.health)}/20; hunger ${Math.round(bot.food)}/20; target avg speed ${(profile?.averageSpeed ?? 0).toFixed(2)}.`);
         break;
       }
       case '!status': bot.chat(`Health: ${Math.round(bot.health)}/20 | Food: ${Math.round(bot.food)}/20 | Target: ${activeTarget ?? 'none'}`); break;
