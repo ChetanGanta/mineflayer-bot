@@ -65,15 +65,48 @@ export function updateOpponentProfile(profile, target) {
   if (speed > 0.12) next.movingSamples += 1;
   return next;
 }
-export function chooseCombatPlan({ health, food, distance, weapon, bow, arrows, hasShield, hasFood, opponentProfile }) {
+export function chooseCombatPlan({ health, food, distance, weapon, bow, crossbow, arrows, hasShield, hasFood, opponentProfile }) {
   if (health <= 5 && hasFood) return { mode:'recover', reason:'critical health' };
   if (health <= 7 && !hasFood) return { mode:'disengage', reason:'critical health and no food' };
   if (food <= 6) return { mode:'recover', reason:'low hunger' };
-  if (!weapon && bow && arrows && distance > 5) return { mode:'ranged', reason:'bow and arrows available; target outside melee range' };
+  if (!weapon && (bow || crossbow) && arrows && distance > 5) return { mode:'ranged', reason:'bow and arrows available; target outside melee range' };
   if (!weapon) return { mode:'survive', reason:'no usable weapon; unarmed fallback' };
-  if (bow && arrows && distance > 9 && (opponentProfile?.averageSpeed ?? 0) < 0.2)
+  if ((bow || crossbow) && arrows && distance > 9 && (opponentProfile?.averageSpeed ?? 0) < 0.2)
     return { mode:'ranged', reason:'stationary distant target; ranged attack preferred' };
   if (distance > 5) return { mode:'close-gap', reason:'target outside melee range' };
   if (hasShield && health <= 12) return { mode:'guarded-engage', reason:'shield available and health reduced' };
   return { mode:'engage', reason:'loadout and health permit engagement' };
+}
+
+export function chooseCrossbow(items) {
+  return [...items].filter(item => item.name === 'crossbow' && durabilityRatio(item) > 0.05)
+    .sort((a,b) => durabilityRatio(b)-durabilityRatio(a))[0] ?? null;
+}
+export function isCrossbowLoaded(item) {
+  if (!item?.nbt) return false;
+  const nbt = JSON.stringify(item.nbt).toLowerCase();
+  return nbt.includes('chargedprojectiles') && !nbt.includes('chargedprojectiles": []');
+}
+export function chooseCombatPotion(items, health) {
+  const potions = items.filter(item => item.name === 'splash_potion' || item.name === 'potion');
+  const text = item => JSON.stringify(item.nbt ?? {}).toLowerCase() + ' ' + item.name.toLowerCase();
+  const priority = health <= 10 ? ['healing','instant_health','regeneration'] : ['strength','swiftness','speed','fire_resistance'];
+  return potions.sort((a,b) => {
+    const score = item => {
+      const t = text(item);
+      return priority.reduce((sum, effect, index) => sum + (t.includes(effect) ? priority.length-index : 0), 0);
+    };
+    return score(b)-score(a);
+  })[0] ?? null;
+}
+export function assessSpecialKit(items) {
+  const names = new Set(items.map(item => item.name));
+  return {
+    endCrystal: names.has('end_crystal'),
+    obsidian: names.has('obsidian'),
+    respawnAnchor: names.has('respawn_anchor'),
+    glowstone: names.has('glowstone'),
+    crossbow: Boolean(chooseCrossbow(items)),
+    potion: Boolean(chooseCombatPotion(items, 20))
+  };
 }

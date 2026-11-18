@@ -2,14 +2,16 @@ import mineflayer from 'mineflayer';
 import { pathfinder, Movements } from 'mineflayer-pathfinder';
 import { plugin as pvp } from 'mineflayer-pvp';
 import {
-  chooseBestWeapon, chooseBestBow, hasArrows, scoreArmor,
+  chooseBestBow, chooseCrossbow, isCrossbowLoaded,
+  chooseCombatPotion, assessSpecialKit, hasArrows, scoreArmor,
   chooseCombatPlan, updateOpponentProfile
 } from './combat-ai.mjs';
+import { chooseContextualWeapon, assessAdvancedKit, chooseAdvancedMode, classifyWeapon } from './advanced-combat.mjs';
 
 const HOST = process.env.MC_HOST;
 const PORT = Number(process.env.MC_PORT ?? 25565);
 const USERNAME = process.env.MC_USERNAME ?? 'MineBot';
-const VERSION = process.env.MC_VERSION ?? '1.20.1';
+const VERSION = process.env.MC_VERSION ?? '1.21.11';
 const OPERATORS = new Set((process.env.MC_OPERATORS ?? '').split(',').map(x => x.trim().toLowerCase()).filter(Boolean));
 if (!HOST) { console.error('Set MC_HOST before starting.'); process.exit(1); }
 
@@ -23,8 +25,10 @@ function createBot() {
   const bot = mineflayer.createBot({ host: HOST, port: PORT, username: USERNAME, version: VERSION });
   let activeTarget = null;
   let gearBusy = false;
+  let weaponSwitchBusy = false;
   let eating = false;
   let rangedBusy = false;
+  let potionBusy = false;
   let lastShotAt = 0;
   let gearTimer;
   let combatTimer;
@@ -43,7 +47,7 @@ function createBot() {
       }
       const shield = items().find(i => i.name === 'shield');
       if (shield) try { await bot.equip(shield, 'off-hand'); } catch (e) { console.debug(e.message); }
-      const weapon = chooseBestWeapon(items());
+      const weapon = chooseContextualWeapon(items(), { distance: 3 });
       if (weapon) try { await bot.equip(weapon, 'hand'); } catch (e) { console.debug(e.message); }
       return weapon;
     } finally { gearBusy = false; }
@@ -66,14 +70,61 @@ function createBot() {
     finally { eating = false; }
   }
 
+  async function useEmergencyPotion() {
+    if (potionBusy || !bot.entity || bot.health > 8) return;
+    const potion = chooseCombatPotion(items(), bot.health);
+    if (!potion || potion.name !== 'potion') return;
+    const potionText = JSON.stringify(potion.nbt ?? {}).toLowerCase();
+    if (!/healing|instant_health|regeneration/.test(potionText)) return;
+    potionBusy = true;
+    try {
+      bot.pvp.stop();
+      await bot.equip(potion, 'hand');
+      await bot.consume();
+    } catch (e) { console.debug('Potion use skipped:', e.message); }
+    finally { potionBusy = false; }
+  }
+
+  async function fireCrossbowShot(target) {
+    if (rangedBusy || Date.now() - lastShotAt < 2500 || !target?.isValid) return;
+    const crossbow = chooseCrossbow(items());
+    if (!crossbow || !hasArrows(items())) return;
+    rangedBusy = true;
+    lastShotAt = Date.now();
+    try {
+      bot.pvp.stop();
+      await bot.equip(crossbow, 'hand');
+      if (!isCrossbowLoaded(crossbow)) {
+        bot.activateItem();
+        await sleep(1250);
+        bot.deactivateItem();
+        await sleep(250);
+      }
+      const current = items().find(item => item.name === 'crossbow');
+      if (!isCrossbowLoaded(current)) return;
+      const distance = bot.entity.position.distanceTo(target.position);
+      const leadTicks = Math.min(18, Math.max(2, distance / 2.5));
+      const v = target.velocity ?? { x: 0, y: 0, z: 0 };
+      const aimPoint = target.position.offset((v.x ?? 0) * leadTicks, 1.1 + (v.y ?? 0) * leadTicks, (v.z ?? 0) * leadTicks);
+      await bot.lookAt(aimPoint, true);
+      if (activeTarget && target.isValid) bot.activateItem();
+      await sleep(150);
+      bot.deactivateItem();
+    } catch (e) {
+      try { bot.deactivateItem(); } catch {}
+      console.debug('Crossbow attack skipped:', e.message);
+    } finally { rangedBusy = false; }
+  }
+
   function assess(target) {
     const inventory = items();
     const hasFood = inventory.some(i => /cooked_|bread|golden_carrot|golden_apple|apple|carrot|potato|beetroot|melon/.test(i.name));
     return chooseCombatPlan({
       health: bot.health, food: bot.food,
       distance: target ? bot.entity.position.distanceTo(target.position) : Infinity,
-      weapon: chooseBestWeapon(inventory),
+      weapon: chooseContextualWeapon(inventory, { distance: target ? bot.entity.position.distanceTo(target.position) : 3 }),
       bow: chooseBestBow(inventory),
+      crossbow: chooseCrossbow(inventory),
       arrows: hasArrows(inventory),
       hasShield: inventory.some(i => i.name === 'shield'),
       hasFood,
@@ -121,11 +172,31 @@ function createBot() {
     }
     const profile = updateOpponentProfile(opponentProfiles.get(activeTarget), target);
     opponentProfiles.set(activeTarget, profile);
+    const distance = bot.entity.position.distanceTo(target.position);
+    const held = bot.heldItem;
+    const contextualWeapon = chooseContextualWeapon(items(), {
+      distance,
+      verticalVelocity: bot.entity.velocity?.y ?? 0,
+      heightAdvantage: bot.entity.position.y - target.position.y,
+      closingSpeed: Math.hypot(target.velocity?.x ?? 0, target.velocity?.z ?? 0),
+      opponentHasShield: false
+    });
+    if (contextualWeapon && held?.name !== contextualWeapon.name && !gearBusy && !weaponSwitchBusy) {
+      weaponSwitchBusy = true;
+      void bot.equip(contextualWeapon, 'hand')
+        .catch(error => console.debug('Weapon switch skipped:', error.message))
+        .finally(() => { weaponSwitchBusy = false; });
+    }
     const plan = assess(target);
-    if (plan.mode === 'ranged') void firePredictedBowShot(target);
+    if (plan.mode === 'ranged') {
+      if (chooseCrossbow(items())) void fireCrossbowShot(target);
+      else void firePredictedBowShot(target);
+    }
     else if (['engage','close-gap','guarded-engage'].includes(plan.mode)) {
       const current = bot.pvp.target;
       if (!current || current.id !== target.id) bot.pvp.attack(target);
+      // Spear jab is performed through the normal attack path. Spear charge,
+      // mace wind-burst chains and Elytra steering need dedicated live-tested controllers.
     } else if (plan.mode === 'recover' || plan.mode === 'disengage') {
       bot.pvp.stop();
     }
@@ -139,7 +210,7 @@ function createBot() {
     movements.allowParkour = true;
     bot.pathfinder.setMovements(movements);
     await equipBestGear();
-    gearTimer = setInterval(() => { void equipBestGear(); void eatIfNeeded(); }, 4000);
+    gearTimer = setInterval(() => { void eatIfNeeded(); void useEmergencyPotion(); }, 4000);
     combatTimer = setInterval(runCombatDecision, 500);
   });
 
@@ -152,7 +223,7 @@ function createBot() {
     }
     if (!isOperator(username)) return;
     switch (cmd.toLowerCase()) {
-      case '!help': bot.chat('Commands: !fight <player>, !stop, !gear, !analyze, !status'); break;
+      case '!help': bot.chat('Commands: !fight <player>, !stop, !gear, !kit, !analyze, !status'); break;
       case '!fight': {
         const name = args[0];
         if (!name || name.toLowerCase() === bot.username.toLowerCase()) { bot.chat('Usage: !fight <nearby-player>'); break; }
@@ -172,14 +243,21 @@ function createBot() {
       case '!gear': {
         const weapon = await equipBestGear();
         const bow = chooseBestBow(items());
-        bot.chat(`Loadout: melee ${weapon?.name ?? 'none'} | ranged ${bow?.name ?? 'none'} | arrows ${hasArrows(items()) ? 'yes' : 'no'}.`);
+        const crossbow = chooseCrossbow(items());
+        bot.chat(`Loadout: melee ${weapon?.name ?? 'none'} (${classifyWeapon(weapon) ?? 'none'}) | bow ${bow?.name ?? 'none'} | crossbow ${crossbow?.name ?? 'none'} | arrows ${hasArrows(items()) ? 'yes' : 'no'}.`);
+        break;
+      }
+      case '!kit': {
+        const kit = { ...assessSpecialKit(items()), ...assessAdvancedKit(items()) };
+        bot.chat(`Kit: spear ${kit.spear ? 'yes' : 'no'} | mace ${kit.mace ? 'yes' : 'no'} | elytra ${kit.elytra ? 'yes' : 'no'} | elytra-mace ${kit.elytraMaceReady ? 'ready' : 'missing gear'} | crystal ${kit.crystalPvPReady ? 'ready' : 'missing gear'} | TNT minecart ${kit.tntMinecartReady ? 'ready' : 'missing gear'} | crossbow ${kit.crossbow ? 'yes' : 'no'} | potion ${kit.potion ? 'yes' : 'no'}.`);
         break;
       }
       case '!analyze': {
         const target = activeTarget ? bot.players[activeTarget]?.entity : null;
         const plan = assess(target);
+        const special = target ? chooseAdvancedMode({ target, distance: bot.entity.position.distanceTo(target.position), botPosition: bot.entity.position, botVelocity: bot.entity.velocity, inventory: items() }) : null;
         const profile = target ? opponentProfiles.get(activeTarget) : null;
-        bot.chat(`AI: ${plan.mode}; ${plan.reason}; HP ${Math.round(bot.health)}/20; hunger ${Math.round(bot.food)}/20; target avg speed ${(profile?.averageSpeed ?? 0).toFixed(2)}.`);
+        bot.chat(`AI: ${plan.mode}; advanced: ${special?.mode ?? 'idle'}; ${special?.reason ?? 'no target'}; ${plan.reason}; HP ${Math.round(bot.health)}/20; hunger ${Math.round(bot.food)}/20; target avg speed ${(profile?.averageSpeed ?? 0).toFixed(2)}.`);
         break;
       }
       case '!status': bot.chat(`Health: ${Math.round(bot.health)}/20 | Food: ${Math.round(bot.food)}/20 | Target: ${activeTarget ?? 'none'}`); break;
