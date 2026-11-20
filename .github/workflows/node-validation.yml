@@ -19,3 +19,4 @@ jobs:
       - run: node --check combat-ai.mjs
       - run: node --check advanced-combat.mjs
       - run: node --check special-combat.mjs
+      - run: node --check sidekick-chat.mjs
