@@ -132,7 +132,10 @@ function createBot() {
     return chooseCombatPlan({
       health: bot.health, food: bot.food,
       distance: target ? bot.entity.position.distanceTo(target.position) : Infinity,
-      weapon: chooseContextualWeapon(inventory, { distance: target ? bot.entity.position.distanceTo(target.position) : 3 }),
+      weapon: chooseContextualWeapon(inventory, {
+        distance: target ? bot.entity.position.distanceTo(target.position) : 3,
+        opponentProfile: target ? opponentProfiles.get(target.username) : null
+      }),
       bow: chooseBestBow(inventory),
       crossbow: chooseCrossbow(inventory),
       arrows: hasArrows(inventory),
@@ -180,7 +183,7 @@ function createBot() {
       console.log('[FIGHT] Target lost; combat stopped.');
       return;
     }
-    const profile = updateOpponentProfile(opponentProfiles.get(activeTarget), target);
+    const profile = updateOpponentProfile(opponentProfiles.get(activeTarget), target, bot.entity.position);
     opponentProfiles.set(activeTarget, profile);
     const distance = bot.entity.position.distanceTo(target.position);
     // Autonomous special-tactic selector: spear, mace, Elytra-mace and (when
@@ -193,7 +196,8 @@ function createBot() {
       verticalVelocity: bot.entity.velocity?.y ?? 0,
       heightAdvantage: bot.entity.position.y - target.position.y,
       closingSpeed: Math.hypot(target.velocity?.x ?? 0, target.velocity?.z ?? 0),
-      opponentHasShield: false
+      opponentHasShield: false,
+      opponentProfile: profile
     });
     if (contextualWeapon && held?.name !== contextualWeapon.name && !gearBusy && !weaponSwitchBusy) {
       weaponSwitchBusy = true;
