@@ -110,7 +110,7 @@ export function chooseCombatPlan({ health, food, distance, weapon, bow, crossbow
   const evasiveTarget = (profile.averageLateralRatio ?? 0) > 0.62 ||
     (profile.directionChanges ?? 0) >= Math.max(3, Math.floor((profile.samples ?? 0) / 8));
 
-  if ((bow || crossbow) && arrows && distance > 10 && !fastTarget && (profile.averageRadialSpeed ?? 0) < 0.12)
+  if ((bow || crossbow) && arrows && distance > 10 && !fastTarget && (profile.averageRadialSpeed ?? 0) >= -0.12)
     return { mode:'ranged', reason:'target is distant and not closing quickly; take a predicted ranged shot' };
   if (distance > 5) return { mode:'close-gap', reason: fastTarget ? 'close distance against a fast-moving target' : 'target outside melee range' };
   if (hasShield && health <= 14 && (fastTarget || evasiveTarget))
