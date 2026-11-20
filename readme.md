@@ -18,14 +18,14 @@ set MC_HOST=your.server.address
 set MC_PORT=25565
 set MC_USERNAME=MineBot
 set MC_VERSION=1.21.11
-set MC_OPERATORS=YourMinecraftUsername
+set MC_OPERATORS=UserZero
 rem Explosive attacks are opt-in; leave false until tested on your private server.
 set MC_ENABLE_EXPLOSIVES=false
 set MC_MAX_SELF_BLAST_DAMAGE=4
 npm start
 ```
 
-Only usernames configured in `MC_OPERATORS` can issue commands.
+Only usernames configured in `MC_OPERATORS` can issue commands. The default operator is `UserZero`; set `MC_OPERATORS` to a comma-separated list if you want to change it.
 
 ## Operator commands
 
@@ -38,6 +38,19 @@ Only usernames configured in `MC_OPERATORS` can issue commands.
 - `!help` — list commands.
 
 Special tactics are selected automatically during an active `!fight`: spear charge at reach, mace strikes during a valid fall, Elytra-mace when airborne with a lower distant target, and crystal/TNT attacks when enabled and blast checks pass. You do not need to issue a separate special-attack command. Explosive tactics remain disabled unless `MC_ENABLE_EXPLOSIVES=true` is set.
+
+## NULL sidekick personality
+
+`sidekick-chat.mjs` gives the bot a distinct, player-like SMP personality:
+- Casual lowercase chat, quick jokes, playful roasting and confident combat banter.
+- Replies to configured operators' ordinary chat; operator commands beginning with `!` continue through the command handler.
+- Can occasionally start a light conversation when an operator is nearby and no fight is active.
+- Reacts to selected game events, such as taking damage or dying.
+- Uses cooldowns and a short recent-line history to reduce spam and repetition.
+- Keeps session-local conversation counters; it does not claim persistent learning or long-term memory.
+- Uses original dialogue with broad inspiration from playful, chaotic creator duos; it does not copy anyone's exact lines or persona.
+
+NULL's spontaneous conversation interval defaults to roughly 2.5–5 minutes. Chat responses are rule-based and do not require an external AI API or additional package.
 
 ## Weapon intelligence
 
@@ -54,7 +67,7 @@ The advanced combat module detects whether the inventory contains:
 - End crystals + obsidian (crystal kit readiness)
 - TNT minecart + activator rail + redstone block (powered TNT minecart kit readiness)
 
-**Experimental execution is now present in `special-combat.mjs`.** Spear charge, a descending mace strike, a basic Elytra launch/boost/dive attempt, end-crystal placement/attack, and TNT-minecart redstone-block, powered activator-rail and cart placement/trigger attempts are wired into the bot. Spear charge and eligible mace strikes can be attempted automatically during combat; Elytra-mace and explosive attacks are operator-triggered with `!special`.
+**Experimental execution is present in `special-combat.mjs`.** Spear charge, a descending mace strike, a basic Elytra launch/boost/dive attempt, end-crystal placement/attack, and TNT-minecart setup/trigger attempts are wired into the bot. The autonomous selector attempts eligible tactics during an active fight. Elytra and explosive tactics still require live testing on the target server.
 
 ## Known limitations
 

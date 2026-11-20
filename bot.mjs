@@ -8,12 +8,13 @@ import {
 } from './combat-ai.mjs';
 import { chooseContextualWeapon, assessAdvancedKit, chooseAdvancedMode, classifyWeapon } from './advanced-combat.mjs';
 import { SpecialCombatController } from './special-combat.mjs';
+import { SidekickChat } from './sidekick-chat.mjs';
 
 const HOST = process.env.MC_HOST;
 const PORT = Number(process.env.MC_PORT ?? 25565);
 const USERNAME = process.env.MC_USERNAME ?? 'MineBot';
 const VERSION = process.env.MC_VERSION ?? '1.21.11';
-const OPERATORS = new Set((process.env.MC_OPERATORS ?? '').split(',').map(x => x.trim().toLowerCase()).filter(Boolean));
+const OPERATORS = new Set((process.env.MC_OPERATORS ?? 'UserZero').split(',').map(x => x.trim().toLowerCase()).filter(Boolean));
 if (!HOST) { console.error('Set MC_HOST before starting.'); process.exit(1); }
 
 let reconnectTimer;
@@ -39,6 +40,10 @@ function createBot() {
   const special = new SpecialCombatController(bot, {
     maxSelfDamage: Number(process.env.MC_MAX_SELF_BLAST_DAMAGE ?? 4),
     explosiveAttacksEnabled: process.env.MC_ENABLE_EXPLOSIVES === 'true'
+  });
+  const sidekick = new SidekickChat(bot, {
+    operators: [...OPERATORS],
+    isCombatActive: () => Boolean(activeTarget || special.busy)
   });
   const items = () => bot.inventory.items();
 
@@ -218,6 +223,7 @@ function createBot() {
     movements.allowParkour = true;
     bot.pathfinder.setMovements(movements);
     await equipBestGear();
+    sidekick.start();
     gearTimer = setInterval(() => { void eatIfNeeded(); void useEmergencyPotion(); }, 4000);
     combatTimer = setInterval(runCombatDecision, 500);
   });
@@ -226,7 +232,7 @@ function createBot() {
     if (username === bot.username) return;
     const [cmd, ...args] = message.trim().split(/\s+/);
     if (!cmd.startsWith('!')) {
-      if (message.trim().toLowerCase() === 'hello') bot.chat(`Hello ${username}! Adaptive combat AI online.`);
+      sidekick.onChat(username, message);
       return;
     }
     if (!isOperator(username)) return;
@@ -240,7 +246,8 @@ function createBot() {
         activeTarget = name;
         const weapon = await equipBestGear();
         const plan = assess(target);
-        bot.chat(`AI: ${plan.mode} — ${plan.reason}. Melee: ${weapon?.name ?? 'none'}.`);
+        console.log(`[FIGHT] ${name}: ${plan.mode} — ${plan.reason}; melee ${weapon?.name ?? 'none'}.`);
+        sidekick.onFightStarted(name);
         if (['recover','disengage','survive'].includes(plan.mode)) {
           activeTarget = null;
           bot.chat('Improve your health, hunger or equipment before engaging.');
@@ -282,6 +289,7 @@ function createBot() {
   bot.on('end', () => {
     if (gearTimer) clearInterval(gearTimer);
     if (combatTimer) clearInterval(combatTimer);
+    sidekick.stop();
     special.stop();
     console.log('[RECONNECT] Retrying in 5 seconds...');
     if (!shuttingDown) reconnectTimer = setTimeout(createBot, 5000);
