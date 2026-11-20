@@ -25,32 +25,16 @@ set MC_MAX_SELF_BLAST_DAMAGE=4
 npm start
 ```
 
-Only usernames configured in `MC_OPERATORS` can issue commands. The default operator is `UserZero`; set `MC_OPERATORS` to a comma-separated list if you want to change it.
+Only usernames configured in `MC_OPERATORS` can control NULL. The default operator is `UserZero`; set `MC_OPERATORS` to a comma-separated list if you want to change it.
 
-## Operator commands
+## Quiet chat controls
 
-- `!fight <player>` — start an adaptive fight against a visible player.
-- `!stop` — stop combat and movement controls.
-- `!gear` — equip the best currently-scored armor and weapon; report ranged options.
-- `!kit` — inspect spear, mace, Elytra/rocket, crystal/obsidian, TNT minecart/rail, potion and crossbow readiness.
-- `!analyze` — show the current tactical and advanced-mode assessment.
-- `!status` — report health, hunger and current target.
-- `!help` — list commands.
+Only the configured operator (default: `UserZero`) can control NULL through normal chat:
+- `fight` — attack the nearest visible non-operator player within 32 blocks.
+- `fight PlayerName` — attack that specific nearby player.
+- `stop` — immediately stop combat.
 
-Special tactics are selected automatically during an active `!fight`: spear charge at reach, mace strikes during a valid fall, Elytra-mace when airborne with a lower distant target, and crystal/TNT attacks when enabled and blast checks pass. You do not need to issue a separate special-attack command. Explosive tactics remain disabled unless `MC_ENABLE_EXPLOSIVES=true` is set.
-
-## NULL sidekick personality
-
-`sidekick-chat.mjs` gives the bot a distinct, player-like SMP personality:
-- Casual lowercase chat, quick jokes, playful roasting and confident combat banter.
-- Replies to configured operators' ordinary chat; operator commands beginning with `!` continue through the command handler.
-- Can occasionally start a light conversation when an operator is nearby and no fight is active.
-- Reacts to selected game events, such as taking damage or dying.
-- Uses cooldowns and a short recent-line history to reduce spam and repetition.
-- Keeps session-local conversation counters; it does not claim persistent learning or long-term memory.
-- Uses original dialogue with broad inspiration from playful, chaotic creator duos; it does not copy anyone's exact lines or persona.
-
-NULL's spontaneous conversation interval defaults to roughly 2.5–5 minutes. Chat responses are rule-based and do not require an external AI API or additional package.
+These control words are intercepted only from the operator. Other players cannot trigger them, and NULL does not announce command execution or print combat diagnostics in public chat. All other messages are treated as ordinary in-character conversation.
 
 ## Weapon intelligence
 
