@@ -14,7 +14,7 @@ const HOST = process.env.MC_HOST;
 const PORT = Number(process.env.MC_PORT ?? 25565);
 const USERNAME = process.env.MC_USERNAME ?? 'MineBot';
 const VERSION = process.env.MC_VERSION ?? '1.21.11';
-const OPERATORS = new Set((process.env.MC_OPERATORS ?? '').split(',').map(x => x.trim().toLowerCase()).filter(Boolean));
+const OPERATORS = new Set((process.env.MC_OPERATORS ?? 'UserZero').split(',').map(x => x.trim().toLowerCase()).filter(Boolean));
 if (!HOST) { console.error('Set MC_HOST before starting.'); process.exit(1); }
 
 let reconnectTimer;
