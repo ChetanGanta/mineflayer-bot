@@ -252,7 +252,7 @@ function createBot() {
         activeTarget = null;
         special.stop();
         movement.reset();
-      bot.pvp.stop();
+        bot.pvp.stop();
         bot.clearControlStates();
         console.log('[FIGHT] Stopped by operator.');
         return;
