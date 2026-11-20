@@ -231,8 +231,8 @@ function createBot() {
   bot.on('chat', async (username, message) => {
     if (username === bot.username) return;
     const text = message.trim();
-    if (isOperator(username) && /^(fight|stop)(?:\s+(\\S+))?$/i.test(text)) {
-      const [, action, requestedTarget] = text.match(/^(fight|stop)(?:\s+(\\S+))?$/i);
+    if (isOperator(username) && /^(fight|stop)(?:\s+(\S+))?$/i.test(text)) {
+      const [, action, requestedTarget] = text.match(/^(fight|stop)(?:\s+(\S+))?$/i);
       if (action.toLowerCase() === 'stop') {
         activeTarget = null;
         special.stop();
