@@ -1,5 +1,5 @@
 import mineflayer from 'mineflayer';
-import { pathfinder, Movements } from 'mineflayer-pathfinder';
+import { pathfinder, Movements, goals } from 'mineflayer-pathfinder';
 import { plugin as pvp } from 'mineflayer-pvp';
 import {
   chooseBestBow, chooseCrossbow, isCrossbowLoaded,
@@ -9,6 +9,7 @@ import {
 import { chooseContextualWeapon, assessAdvancedKit, chooseAdvancedMode, classifyWeapon } from './advanced-combat.mjs';
 import { SpecialCombatController } from './special-combat.mjs';
 import { SidekickChat } from './sidekick-chat.mjs';
+import { CombatMovementController } from './movement-ai.mjs';
 
 const HOST = process.env.MC_HOST;
 const PORT = Number(process.env.MC_PORT ?? 25565);
@@ -37,6 +38,7 @@ function createBot() {
   const opponentProfiles = new Map();
   bot.loadPlugin(pathfinder);
   bot.loadPlugin(pvp);
+  const movement = new CombatMovementController(bot, goals);
   const special = new SpecialCombatController(bot, {
     maxSelfDamage: Number(process.env.MC_MAX_SELF_BLAST_DAMAGE ?? 4),
     explosiveAttacksEnabled: process.env.MC_ENABLE_EXPLOSIVES === 'true'
@@ -69,6 +71,7 @@ function createBot() {
     if (!food) return;
     eating = true;
     try {
+      movement.reset();
       bot.pvp.stop();
       await bot.equip(food, 'hand');
       await bot.consume();
@@ -88,6 +91,7 @@ function createBot() {
     if (!/healing|instant_health|regeneration/.test(potionText)) return;
     potionBusy = true;
     try {
+      movement.reset();
       bot.pvp.stop();
       await bot.equip(potion, 'hand');
       await bot.consume();
@@ -102,6 +106,7 @@ function createBot() {
     rangedBusy = true;
     lastShotAt = Date.now();
     try {
+      movement.reset();
       bot.pvp.stop();
       await bot.equip(crossbow, 'hand');
       if (!isCrossbowLoaded(crossbow)) {
@@ -152,6 +157,7 @@ function createBot() {
     rangedBusy = true;
     lastShotAt = Date.now();
     try {
+      movement.reset();
       bot.pvp.stop();
       await bot.equip(bow, 'hand');
       const distance = bot.entity.position.distanceTo(target.position);
@@ -179,6 +185,7 @@ function createBot() {
     const target = bot.players[activeTarget]?.entity;
     if (!target) {
       activeTarget = null;
+      movement.reset();
       bot.pvp.stop();
       console.log('[FIGHT] Target lost; combat stopped.');
       return;
@@ -188,8 +195,8 @@ function createBot() {
     const distance = bot.entity.position.distanceTo(target.position);
     // Autonomous special-tactic selector: spear, mace, Elytra-mace and (when
     // explicitly enabled) crystal/TNT actions are chosen without !special.
-    if (await special.autoFight(target)) return;
-    if (special.busy) return;
+    if (await special.autoFight(target)) { movement.reset(); return; }
+    if (special.busy) { movement.reset(); return; }
     const held = bot.heldItem;
     const contextualWeapon = chooseContextualWeapon(items(), {
       distance,
@@ -207,14 +214,18 @@ function createBot() {
     }
     const plan = assess(target);
     if (plan.mode === 'ranged') {
+      movement.reset();
       if (chooseCrossbow(items())) void fireCrossbowShot(target);
       else void firePredictedBowShot(target);
     }
     else if (['engage','close-gap','guarded-engage'].includes(plan.mode)) {
       const current = bot.pvp.target;
-      if (!current || current.id !== target.id) bot.pvp.attack(target);
-      // Ordinary weapons continue through mineflayer-pvp.
+      if (!current || current.id !== target.id) await bot.pvp.attack(target);
+      // Pathfinder handles pursuit and terrain; the controller periodically
+      // replaces GoalFollow with a short flank waypoint during close combat.
+      movement.update(target, profile);
     } else if (plan.mode === 'recover' || plan.mode === 'disengage') {
+      movement.reset();
       bot.pvp.stop();
     }
   }
@@ -240,6 +251,7 @@ function createBot() {
       if (action.toLowerCase() === 'stop') {
         activeTarget = null;
         special.stop();
+        movement.reset();
         bot.pvp.stop();
         bot.clearControlStates();
         console.log('[FIGHT] Stopped by operator.');
@@ -260,6 +272,7 @@ function createBot() {
       }
 
       activeTarget = chosen.name;
+      movement.reset();
       const weapon = await equipBestGear();
       const plan = assess(chosen.entity);
       console.log(`[FIGHT] ${chosen.name}: ${plan.mode} — ${plan.reason}; melee ${weapon?.name ?? 'none'}.`);
@@ -279,7 +292,7 @@ function createBot() {
 
   bot.on('entityGone', entity => {
     if (activeTarget && entity.username === activeTarget) {
-      activeTarget = null; bot.pvp.stop(); console.log('[FIGHT] Target lost; combat stopped.');
+      activeTarget = null; movement.reset(); bot.pvp.stop(); console.log('[FIGHT] Target lost; combat stopped.');
     }
   });
   bot.on('kicked', reason => console.error('[KICKED]', reason));
@@ -289,6 +302,7 @@ function createBot() {
     if (combatTimer) clearInterval(combatTimer);
     sidekick.stop();
     special.stop();
+    movement.reset();
     console.log('[RECONNECT] Retrying in 5 seconds...');
     if (!shuttingDown) reconnectTimer = setTimeout(createBot, 5000);
   });
