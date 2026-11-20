@@ -153,9 +153,10 @@ export class SidekickChat {
   async generateReply(username, message) {
     if (!this.apiKey) {
       if (!this.warnedMissingKey) {
-        console.warn('[NULL CHAT] GEMINI_API_KEY is missing; AI replies are disabled.');
+        console.warn('[NULL CHAT] GEMINI_API_KEY is missing; using built-in chat fallback.');
         this.warnedMissingKey = true;
       }
+      this.say(this.fallbackReply(message));
       return;
     }
 
@@ -209,6 +210,36 @@ export class SidekickChat {
     if (shortReply) this.say(shortReply);
   }
 
+  fallbackReply(message) {
+    const text = String(message).toLowerCase();
+    let choices;
+
+    if (/\b(hi|hello|hey|yo|sup)\b/.test(text)) {
+      choices = ['yo, what chaos are we causing', 'ayyy, whats the plan', 'bro finally, i was getting bored'];
+    } else if (/\b(thanks|thank you|ty)\b/.test(text)) {
+      choices = ['got you bro', 'anytime, thats what teammates are for', 'dont get emotional on me 💀'];
+    } else if (/\b(lol|lmao|haha|💀)\b/.test(text)) {
+      choices = ['nah this team is actually cooked', 'IM CRYING 😭', 'you make zero sense bro'];
+    } else if (/\b(what|where|when|why|how|who)\b/.test(text)) {
+      choices = ['good question. let me pretend i know', 'not sure yet, lets figure it out', 'give me a sec, my two braincells are loading'];
+    } else if (/\b(diamonds?|gear|loot|base|build|farm|mine)\b/.test(text)) {
+      choices = ['say less, we need the upgrades', 'im down. just dont make me do all the mining', 'this better be worth the grind'];
+    } else if (/\b(fight|pvp|enemy|attack|kill|combat)\b/.test(text)) {
+      choices = ['keep your eyes open, this could get messy', 'im ready. try not to get folded', 'we should play this smart'];
+    } else {
+      choices = [
+        'bro what is the plan here 😭',
+        'im listening. unfortunately.',
+        'that sounds suspicious. im in',
+        'you know what, fair enough',
+        'i was NOT expecting that',
+        'okay, keep talking'
+      ];
+    }
+
+    return this.pickFresh(choices);
+  }
+
   onChat(username, message) {
     if (!this.isOperator(username) || !message) return;
     const text = message.trim();
@@ -221,7 +252,10 @@ export class SidekickChat {
     this.pendingReplies.add(username);
     this.lastReplyAt.set(username, now());
     void this.generateReply(username, text)
-      .catch(error => console.warn('[NULL CHAT] Gemini reply failed:', error.message))
+      .catch(error => {
+        console.warn('[NULL CHAT] Gemini unavailable; using built-in fallback:', error.message);
+        this.say(this.fallbackReply(text));
+      })
       .finally(() => this.pendingReplies.delete(username));
   }
 
