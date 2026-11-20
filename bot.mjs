@@ -290,6 +290,12 @@ function createBot() {
     sidekick.onChat(username, message);
   });
 
+  bot.on('entityHurt', entity => {
+    if (entity !== bot.entity || !activeTarget) return;
+    const target = bot.players[activeTarget]?.entity;
+    if (target) movement.dodge(target);
+  });
+
   bot.on('entityGone', entity => {
     if (activeTarget && entity.username === activeTarget) {
       activeTarget = null; movement.reset(); bot.pvp.stop(); console.log('[FIGHT] Target lost; combat stopped.');
