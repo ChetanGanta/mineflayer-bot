@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { updateOpponentProfile, chooseCombatPlan } from './combat-ai.mjs';
 import { chooseMovementPlan, getStrafeWaypoint, CombatMovementController } from './movement-ai.mjs';
+import { canSprintReset, SprintResetController } from './combat-timing.mjs';
 
 test('opponent profile detects lateral movement', () => {
   const target = {
@@ -150,8 +151,6 @@ test('movement controller dodges sideways when hit during close combat', () => {
   assert.equal(issuedGoals[0].dynamic, true);
   assert.equal(controller.dodge(target), null);
 });
-
-import { canSprintReset, SprintResetController } from './combat-timing.mjs';
 
 test('sprint reset requires grounded forward sprinting combat', () => {
   assert.equal(canSprintReset({
