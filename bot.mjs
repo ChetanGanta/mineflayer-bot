@@ -177,7 +177,7 @@ function createBot() {
     if (!target) {
       activeTarget = null;
       bot.pvp.stop();
-      bot.chat('Target lost. Combat stopped.');
+      console.log('[FIGHT] Target lost; combat stopped.');
       return;
     }
     const profile = updateOpponentProfile(opponentProfiles.get(activeTarget), target);
@@ -230,58 +230,52 @@ function createBot() {
 
   bot.on('chat', async (username, message) => {
     if (username === bot.username) return;
-    const [cmd, ...args] = message.trim().split(/\s+/);
-    if (!cmd.startsWith('!')) {
-      sidekick.onChat(username, message);
+    const text = message.trim();
+    if (isOperator(username) && /^(fight|stop)(?:\\s+(\\S+))?$/i.test(text)) {
+      const [, action, requestedTarget] = text.match(/^(fight|stop)(?:\\s+(\\S+))?$/i);
+      if (action.toLowerCase() === 'stop') {
+        activeTarget = null;
+        special.stop();
+        bot.pvp.stop();
+        bot.clearControlStates();
+        console.log('[FIGHT] Stopped by operator.');
+        return;
+      }
+
+      const candidates = Object.entries(bot.players ?? {})
+        .filter(([name, player]) => name !== bot.username && !isOperator(name) && player?.entity?.isValid)
+        .map(([name, player]) => ({ name, entity: player.entity, distance: bot.entity.position.distanceTo(player.entity.position) }))
+        .filter(player => player.distance <= 32)
+        .sort((a, b) => a.distance - b.distance);
+      const chosen = requestedTarget
+        ? candidates.find(player => player.name.toLowerCase() === requestedTarget.toLowerCase())
+        : candidates[0];
+      if (!chosen) {
+        console.log('[FIGHT] No valid nearby target; no public chat message sent.');
+        return;
+      }
+
+      activeTarget = chosen.name;
+      const weapon = await equipBestGear();
+      const plan = assess(chosen.entity);
+      console.log(`[FIGHT] ${chosen.name}: ${plan.mode} — ${plan.reason}; melee ${weapon?.name ?? 'none'}.`);
+      sidekick.onFightStarted(chosen.name);
+      if (['recover','disengage','survive'].includes(plan.mode)) {
+        activeTarget = null;
+        console.log('[FIGHT] Not engaging: health, hunger, or equipment needs attention.');
+      } else {
+        runCombatDecision();
+      }
       return;
     }
-    if (!isOperator(username)) return;
-    switch (cmd.toLowerCase()) {
-      case '!help': bot.chat('Commands: !fight <player>, !stop, !gear, !kit, !analyze, !status. Special tactics are selected automatically during fights.'); break;
-      case '!fight': {
-        const name = args[0];
-        if (!name || name.toLowerCase() === bot.username.toLowerCase()) { bot.chat('Usage: !fight <nearby-player>'); break; }
-        const target = bot.players[name]?.entity;
-        if (!target) { bot.chat(`Cannot see ${name}; move closer.`); break; }
-        activeTarget = name;
-        const weapon = await equipBestGear();
-        const plan = assess(target);
-        console.log(`[FIGHT] ${name}: ${plan.mode} — ${plan.reason}; melee ${weapon?.name ?? 'none'}.`);
-        sidekick.onFightStarted(name);
-        if (['recover','disengage','survive'].includes(plan.mode)) {
-          activeTarget = null;
-          bot.chat('Improve your health, hunger or equipment before engaging.');
-        } else runCombatDecision();
-        break;
-      }
-      case '!stop': activeTarget = null; special.stop(); bot.pvp.stop(); bot.clearControlStates(); bot.chat('Combat stopped.'); break;
-      case '!gear': {
-        const weapon = await equipBestGear();
-        const bow = chooseBestBow(items());
-        const crossbow = chooseCrossbow(items());
-        bot.chat(`Loadout: melee ${weapon?.name ?? 'none'} (${classifyWeapon(weapon) ?? 'none'}) | bow ${bow?.name ?? 'none'} | crossbow ${crossbow?.name ?? 'none'} | arrows ${hasArrows(items()) ? 'yes' : 'no'}.`);
-        break;
-      }
-      case '!kit': {
-        const kit = { ...assessSpecialKit(items()), ...assessAdvancedKit(items()) };
-        bot.chat(`Kit: spear ${kit.spear ? 'yes' : 'no'} | mace ${kit.mace ? 'yes' : 'no'} | elytra ${kit.elytra ? 'yes' : 'no'} | elytra-mace ${kit.elytraMaceReady ? 'ready' : 'missing gear'} | crystal ${kit.crystalPvPReady ? 'ready' : 'missing gear'} | TNT minecart ${kit.tntMinecartReady ? 'ready' : 'missing gear'} | crossbow ${kit.crossbow ? 'yes' : 'no'} | potion ${kit.potion ? 'yes' : 'no'}.`);
-        break;
-      }
-      case '!analyze': {
-        const target = activeTarget ? bot.players[activeTarget]?.entity : null;
-        const plan = assess(target);
-        const special = target ? chooseAdvancedMode({ target, distance: bot.entity.position.distanceTo(target.position), botPosition: bot.entity.position, botVelocity: bot.entity.velocity, inventory: items() }) : null;
-        const profile = target ? opponentProfiles.get(activeTarget) : null;
-        bot.chat(`AI: ${plan.mode}; advanced: ${special?.mode ?? 'idle'}; ${special?.reason ?? 'no target'}; ${plan.reason}; HP ${Math.round(bot.health)}/20; hunger ${Math.round(bot.food)}/20; target avg speed ${(profile?.averageSpeed ?? 0).toFixed(2)}.`);
-        break;
-      }
-      case '!status': bot.chat(`Health: ${Math.round(bot.health)}/20 | Food: ${Math.round(bot.food)}/20 | Target: ${activeTarget ?? 'none'}`); break;
-    }
+
+    // All other chat is handled as ordinary in-character conversation.
+    sidekick.onChat(username, message);
   });
 
   bot.on('entityGone', entity => {
     if (activeTarget && entity.username === activeTarget) {
-      activeTarget = null; bot.pvp.stop(); bot.chat('Target lost. Combat stopped.');
+      activeTarget = null; bot.pvp.stop(); console.log('[FIGHT] Target lost; combat stopped.');
     }
   });
   bot.on('kicked', reason => console.error('[KICKED]', reason));
