@@ -125,6 +125,8 @@ export class SidekickChat {
           'okay that was personal',
           'nah, we are not letting that slide'
         ]));
+      } else {
+        this.onNearbyPlayerHurt(entity);
       }
     });
     this.bot.on('death', () => this.say('...we are not talking about that death 💀', { force: true }));
