@@ -12,13 +12,13 @@ export function chooseMovementPlan({ distance, profile = {} }) {
     return { mode: 'pursue', reason: 'close the gap', radius: 2 };
   }
   if (distance < 1.8) {
-    return { mode: 'create-space', reason: 'avoid crowding the target', radius: 2.6 };
+    return { mode: 'create-space', reason: 'avoid crowding the target', radius: 2.4 };
   }
   if (distance <= 5.2) {
     return {
       mode: 'strafe',
       reason: evasive ? 'orbit an evasive target' : 'keep moving during close combat',
-      radius: clamp(distance * 0.78, 2.1, 3.1)
+      radius: clamp(distance * 0.55, 1.9, 2.5)
     };
   }
   return { mode: 'pressure', reason: 'maintain pursuit pressure', radius: 2 };
@@ -42,7 +42,7 @@ export function getStrafeWaypoint(botPosition, targetPosition, side = 1, radius 
 }
 
 export class CombatMovementController {
-  constructor(bot, goals, { repositionCooldown = 1150, goalRadius = 1.1 } = {}) {
+  constructor(bot, goals, { repositionCooldown = 1150, goalRadius = 0.65 } = {}) {
     this.bot = bot;
     this.goals = goals;
     this.repositionCooldown = repositionCooldown;
