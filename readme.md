@@ -18,14 +18,14 @@ set MC_HOST=your.server.address
 set MC_PORT=25565
 set MC_USERNAME=MineBot
 set MC_VERSION=1.21.11
-set MC_OPERATORS=YourMinecraftUsername
+set MC_OPERATORS=UserZero
 rem Explosive attacks are opt-in; leave false until tested on your private server.
 set MC_ENABLE_EXPLOSIVES=false
 set MC_MAX_SELF_BLAST_DAMAGE=4
 npm start
 ```
 
-Only usernames configured in `MC_OPERATORS` can issue commands.
+Only usernames configured in `MC_OPERATORS` can issue commands. The default operator is `UserZero`; set `MC_OPERATORS` to a comma-separated list if you want to change it.
 
 ## Operator commands
 
