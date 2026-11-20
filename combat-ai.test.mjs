@@ -150,3 +150,79 @@ test('movement controller dodges sideways when hit during close combat', () => {
   assert.equal(issuedGoals[0].dynamic, true);
   assert.equal(controller.dodge(target), null);
 });
+
+import { canSprintReset, SprintResetController } from './combat-timing.mjs';
+
+test('sprint reset requires grounded forward sprinting combat', () => {
+  assert.equal(canSprintReset({
+    onGround: true, sprinting: true, movingForward: true,
+    targetValid: true, combatActive: true, specialBusy: false
+  }), true);
+  assert.equal(canSprintReset({
+    onGround: false, sprinting: true, movingForward: true,
+    targetValid: true, combatActive: true, specialBusy: false
+  }), false);
+  assert.equal(canSprintReset({
+    onGround: true, sprinting: false, movingForward: true,
+    targetValid: true, combatActive: true, specialBusy: false
+  }), false);
+  assert.equal(canSprintReset({
+    onGround: true, sprinting: true, movingForward: true,
+    targetValid: true, combatActive: true, specialBusy: true
+  }), false);
+});
+
+test('sprint reset releases sprint for one tick then restores it if fight continues', async () => {
+  const states = [];
+  const target = { id: 4, isValid: true };
+  const bot = {
+    entity: { onGround: true },
+    time: { age: 100 },
+    pvp: { target },
+    getControlState(name) { return name === 'sprint' || name === 'forward'; },
+    setControlState(name, state) { states.push([name, state]); },
+    async waitForTicks(ticks) { assert.equal(ticks, 1); }
+  };
+  const controller = new SprintResetController(bot);
+  assert.equal(controller.onAttack(target), true);
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.deepEqual(states, [['sprint', false], ['sprint', true]]);
+});
+
+test('sprint reset does not restore sprint after target changes', async () => {
+  const states = [];
+  const target = { id: 5, isValid: true };
+  const bot = {
+    entity: { onGround: true },
+    time: { age: 200 },
+    pvp: { target },
+    getControlState(name) { return name === 'sprint' || name === 'forward'; },
+    setControlState(name, state) { states.push([name, state]); },
+    async waitForTicks() { this.pvp.target = null; }
+  };
+  const controller = new SprintResetController(bot);
+  assert.equal(controller.onAttack(target), true);
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.deepEqual(states, [['sprint', false]]);
+});
+
+test('sprint reset enforces a tick cooldown', async () => {
+  const states = [];
+  const target = { id: 6, isValid: true };
+  const bot = {
+    entity: { onGround: true },
+    time: { age: 300 },
+    pvp: { target },
+    getControlState(name) { return name === 'sprint' || name === 'forward'; },
+    setControlState(name, state) { states.push([name, state]); },
+    async waitForTicks() {}
+  };
+  const controller = new SprintResetController(bot, { cooldownTicks: 6 });
+  assert.equal(controller.onAttack(target), true);
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(controller.onAttack(target), false);
+  assert.deepEqual(states, [['sprint', false], ['sprint', true]]);
+});
