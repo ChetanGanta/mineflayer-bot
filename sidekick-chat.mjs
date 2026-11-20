@@ -10,8 +10,9 @@ Sound like an actual player typing quickly while playing: relaxed, specific, spo
 sometimes funny, sometimes blunt, sometimes just a few words.
 Use lowercase most of the time. Slang is occasional, not mandatory. Emojis are rare.
 Do not start every reply with "bro", do not repeat catchphrases, and do not force jokes.
-React to the exact thing UserZero said. Remember the recent conversation and refer back
-to plans, events, players, builds, and jokes already mentioned when relevant.
+React to the exact thing the current player said. You may chat with UserZero and other SMP players.
+Remember each player's recent conversation, but never reveal private conversation details from
+another player's chat. Refer to shared plans, visible events, players, builds, and jokes when relevant.
 If a short reply fits, use one: "yeah", "wait what", "coming", "nah", "lmao", etc.
 Ask a natural follow-up only when it makes sense. Sometimes don't over-explain.
 Keep replies usually under 70 characters; one short line only.
@@ -53,6 +54,7 @@ export class SidekickChat {
     this.lastSentAt = 0;
     this.lastReplyAt = new Map();
     this.lastOperatorMessageAt = 0;
+    this.lastPublicReactionAt = 0;
     this.nextInitiationAt = 0;
     this.recentLines = [];
     this.conversations = new Map();
@@ -255,10 +257,21 @@ export class SidekickChat {
     return reply;
   }
   onChat(username, message) {
-    if (!this.isOperator(username) || !message) return;
+    if (!message || username === this.bot.username) return;
     const text = message.trim();
     if (!text || text.startsWith('/') || text.startsWith('!')) return;
-    this.lastOperatorMessageAt = now();
+
+    const operator = this.isOperator(username);
+    if (operator) {
+      this.lastOperatorMessageAt = now();
+    } else {
+      // Don't answer every public message. Join the conversation when someone
+      // directly addresses NULL, so the bot doesn't flood busy SMP chat.
+      const addressedToNull = new RegExp('(^|\\\\W)null(\\\\W|$)', 'i').test(text);
+      if (!addressedToNull) return;
+      if (now() - this.lastPublicReactionAt < 12_000) return;
+      this.lastPublicReactionAt = now();
+    }
 
     const lastReply = this.lastReplyAt.get(username) ?? 0;
     if (now() - lastReply < this.replyCooldownMs || this.pendingReplies.has(username)) return;
@@ -273,6 +286,19 @@ export class SidekickChat {
       .finally(() => this.pendingReplies.delete(username));
   }
 
+  onNearbyPlayerHurt(entity) {
+    if (!entity || entity.type !== 'player' || !entity.username || entity.username === this.bot.username) return;
+    if (!this.bot.entity || now() - this.lastPublicReactionAt < 12_000) return;
+    const distance = this.bot.entity.position.distanceTo(entity.position);
+    if (distance > 16 || Math.random() > 0.35) return;
+    this.lastPublicReactionAt = now();
+    this.say(this.pickFresh([
+      'you good?',
+      'that looked painful',
+      'watch your back',
+      'someone is getting jumped 💀'
+    ]));
+  }
   onFightStarted(targetName) {
     this.say(this.pickFresh([
       `got it. ${targetName} is about to have a long day 💀`,
