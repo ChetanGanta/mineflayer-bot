@@ -25,6 +25,65 @@ test('opponent profile counts sharp direction reversals', () => {
   assert.equal(second.directionChanges, 1);
 });
 
+test('opponent profile detects repeated jumps from grounded-to-airborne transitions', () => {
+  const observer = { x: 0, z: 0 };
+  let profile = updateOpponentProfile(null, {
+    position: { x: 4, z: 0 }, velocity: { x: 0, y: 0, z: 0 }, onGround: true
+  }, observer);
+  for (let i = 0; i < 4; i++) {
+    profile = updateOpponentProfile(profile, {
+      position: { x: 4, z: 0 }, velocity: { x: 0, y: 0.2, z: 0 }, onGround: false
+    }, observer);
+    profile = updateOpponentProfile(profile, {
+      position: { x: 4, z: 0 }, velocity: { x: 0, y: -0.2, z: 0 }, onGround: false
+    }, observer);
+    profile = updateOpponentProfile(profile, {
+      position: { x: 4, z: 0 }, velocity: { x: 0, y: 0, z: 0 }, onGround: true
+    }, observer);
+  }
+  assert.equal(profile.jumpStarts, 4);
+  assert.ok(profile.jumpSamples > 0);
+});
+
+test('opponent profile distinguishes repeated retreating and rushing movement', () => {
+  const observer = { x: 0, z: 0 };
+  let retreat = null;
+  let rush = null;
+  for (let i = 0; i < 5; i++) {
+    retreat = updateOpponentProfile(retreat, {
+      position: { x: 4, z: 0 }, velocity: { x: 0.25, y: 0, z: 0 }, onGround: true
+    }, observer);
+    rush = updateOpponentProfile(rush, {
+      position: { x: 4, z: 0 }, velocity: { x: -0.25, y: 0, z: 0 }, onGround: true
+    }, observer);
+  }
+  assert.equal(retreat.retreatSamples, 5);
+  assert.equal(rush.rushSamples, 5);
+  assert.ok(retreat.averageRadialSpeed > 0);
+  assert.ok(rush.averageRadialSpeed < 0);
+});
+
+test('combat plan recognises a repeated jumper as evasive', () => {
+  const plan = chooseCombatPlan({
+    health: 20, food: 20, distance: 4, weapon: { name: 'diamond_sword' },
+    bow: null, crossbow: null, arrows: false, hasShield: false, hasFood: true,
+    opponentProfile: { samples: 20, averageSpeed: 0.1, averageLateralRatio: 0.1,
+      directionChanges: 0, jumpStarts: 4, jumpSamples: 8, averageRadialSpeed: 0 }
+  });
+  assert.match(plan.reason, /jumping or evasive/);
+});
+
+test('combat plan prioritises cutting off a retreating target at range', () => {
+  const plan = chooseCombatPlan({
+    health: 20, food: 20, distance: 8, weapon: { name: 'diamond_sword' },
+    bow: null, crossbow: null, arrows: false, hasShield: false, hasFood: true,
+    opponentProfile: { samples: 20, averageSpeed: 0.3, averageLateralRatio: 0.1,
+      directionChanges: 0, retreatSamples: 10, rushSamples: 0, averageRadialSpeed: 0.2 }
+  });
+  assert.equal(plan.mode, 'close-gap');
+  assert.match(plan.reason, /retreating/);
+});
+
 test('combat plan closes distance against a fast target', () => {
   const plan = chooseCombatPlan({
     health: 20, food: 20, distance: 8, weapon: { name: 'diamond_sword' },
