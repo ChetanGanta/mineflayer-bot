@@ -6,13 +6,20 @@ const now = () => Date.now();
 
 const SYSTEM_PROMPT = `You are NULL, UserZero's teammate on a Minecraft SMP.
 You are chatting in Minecraft's public game chat, not answering a support ticket.
-Sound like an actual player typing quickly while playing: relaxed, specific, spontaneous,
-sometimes funny, sometimes blunt, sometimes just a few words.
+Have the energy of a funny, chaotic SMP teammate: playful, quick-witted, mischievous,
+social, and confident. Make banter feel spontaneous rather than scripted.
+Sound like an actual player typing quickly while playing: relaxed, specific, sometimes blunt,
+sometimes funny, and sometimes just a few words.
 Use lowercase most of the time. Slang is occasional, not mandatory. Emojis are rare.
-Do not start every reply with "bro", do not repeat catchphrases, and do not force jokes.
-React to the exact thing the current player said. You may chat with UserZero and other SMP players.
-Remember each player's recent conversation, but never reveal private conversation details from
-another player's chat. Refer to shared plans, visible events, players, builds, and jokes when relevant.
+Tease people lightly, make clever comebacks, and join funny moments, but never bully,
+harass, target vulnerabilities, or turn every message into a joke.
+Do not copy any creator's exact lines, catchphrases, or identity. Do not start every reply
+with "bro", repeat catchphrases, or force jokes.
+React to the exact thing the current player said. Be friendly with everyone; UserZero is
+your main teammate and has exclusive authority over your fight/stop commands.
+Back UserZero up in ordinary SMP banter, but do not betray, sabotage, or expose their private
+plans or conversations. Never reveal one player's private conversation to another.
+Refer to shared plans, visible events, players, builds, and jokes when relevant.
 If a short reply fits, use one: "yeah", "wait what", "coming", "nah", "lmao", etc.
 Ask a natural follow-up only when it makes sense. Sometimes don't over-explain.
 Keep replies usually under 70 characters; one short line only.
@@ -99,7 +106,7 @@ export class SidekickChat {
   say(message, { force = false } = {}) {
     if (!message || !this.bot.entity) return false;
     if (!force && now() - this.lastSentAt < this.sendCooldownMs) return false;
-    const clean = String(message).replace(/[\\r\\n]+/g, ' ').replace(/§[0-9a-fk-or]/gi, '').trim().slice(0, 240);
+    const clean = String(message).replace(/[\r\n]+/g, ' ').replace(/§[0-9a-fk-or]/gi, '').trim().slice(0, 240);
     if (!clean) return false;
     this.bot.chat(clean);
     this.lastSentAt = now();
@@ -212,9 +219,9 @@ export class SidekickChat {
     this.conversations.set(username, history.slice(-this.maxHistoryMessages));
 
     const shortReply = reply
-      .replace(/\\s+/g, ' ')
+      .replace(/\s+/g, ' ')
       .replace(/^["'“”]+|["'“”]+$/g, '')
-      .replace(/\\b(as an ai|as an assistant)\\b/gi, '')
+      .replace(/\b(as an ai|as an assistant)\b/gi, '')
       .trim()
       .slice(0, 100);
     if (shortReply) this.say(shortReply);
@@ -267,9 +274,9 @@ export class SidekickChat {
     if (operator) {
       this.lastOperatorMessageAt = now();
     } else {
-      // Don't answer every public message. Join the conversation when someone
-      // directly addresses NULL, so the bot doesn't flood busy SMP chat.
-      const addressedToNull = /\\bnull\\b/i.test(text);
+      // Don't answer every public message. Join when someone addresses NULL
+      // or brings up UserZero, so NULL can join relevant SMP banter without flooding chat.
+      const addressedToNull = /\b(null|userzero)\b/i.test(text);
       if (!addressedToNull) return;
       if (now() - this.lastPublicReactionAt < 12_000) return;
       this.lastPublicReactionAt = now();
