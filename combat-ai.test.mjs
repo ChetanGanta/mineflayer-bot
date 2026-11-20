@@ -126,3 +126,27 @@ test('movement controller restores follow pursuit at long range', () => {
   assert.ok(issuedGoals[0].goal instanceof GoalFollow);
   assert.equal(issuedGoals[0].goal.range, 2);
 });
+
+test('movement controller dodges sideways when hit during close combat', () => {
+  const position = (x, y, z) => ({
+    x, y, z,
+    distanceTo(other) { return Math.hypot(this.x - other.x, this.y - other.y, this.z - other.z); }
+  });
+  const issuedGoals = [];
+  const bot = {
+    entity: { position: position(3, 64, 0) },
+    pathfinder: { setGoal(goal, dynamic) { issuedGoals.push({ goal, dynamic }); } }
+  };
+  class GoalNear {
+    constructor(x, y, z, range) { Object.assign(this, { x, y, z, range }); }
+  }
+  const controller = new CombatMovementController(bot, { GoalNear });
+  const target = { id: 12, isValid: true, position: position(0, 64, 0) };
+
+  const waypoint = controller.dodge(target);
+  assert.ok(waypoint);
+  assert.equal(issuedGoals.length, 1);
+  assert.ok(issuedGoals[0].goal instanceof GoalNear);
+  assert.equal(issuedGoals[0].dynamic, true);
+  assert.equal(controller.dodge(target), null);
+});
