@@ -139,7 +139,7 @@ export function chooseCombatPlan({ health, food, distance, weapon, bow, crossbow
   if (evasiveTarget && distance <= 5)
     return { mode:'engage', reason:'jumping or evasive movement detected; keep pressure and vary approach' };
   if (rushingTarget && distance <= 5)
-    return { mode:'guarded-engage', reason:'opponent repeatedly rushes; hold spacing and punish the approach' };
+    return { mode:'engage', reason:'opponent repeatedly rushes; keep lateral spacing and punish the approach' };
   return { mode:'engage', reason:'loadout and health permit engagement' };
 }
 
