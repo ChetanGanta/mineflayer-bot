@@ -55,26 +55,68 @@ export function scoreArmor(item) {
   return materialMultiplier(name) * 10 + protection + durabilityRatio(item);
 }
 
-// Session-local opponent model. It adapts range preference to observed movement.
-export function updateOpponentProfile(profile, target) {
-  const velocity = target.velocity;
-  const speed = Math.hypot(velocity?.x ?? 0, velocity?.z ?? 0);
-  const next = profile ?? { samples: 0, averageSpeed: 0, movingSamples: 0 };
+// Session-local opponent model. Samples movement, lateral dodging and direction changes.
+export function updateOpponentProfile(profile, target, observerPosition = null) {
+  const velocity = target?.velocity ?? {};
+  const vx = Number(velocity.x ?? 0);
+  const vz = Number(velocity.z ?? 0);
+  const speed = Math.hypot(vx, vz);
+  const next = profile ?? {
+    samples: 0, averageSpeed: 0, movingSamples: 0,
+    directionChanges: 0, averageLateralRatio: 0,
+    averageRadialSpeed: 0, previousVelocity: null
+  };
+
   next.samples += 1;
-  next.averageSpeed += (speed - next.averageSpeed) / next.samples;
+  const alpha = next.samples < 5 ? 1 / next.samples : 0.2;
+  next.averageSpeed += (speed - next.averageSpeed) * alpha;
   if (speed > 0.12) next.movingSamples += 1;
+
+  const previous = next.previousVelocity;
+  if (previous && speed > 0.16 && previous.speed > 0.16) {
+    const dot = (vx * previous.x + vz * previous.z) / (speed * previous.speed);
+    if (dot < -0.35) next.directionChanges += 1;
+  }
+
+  let radialSpeed = 0;
+  let lateralRatio = 0;
+  if (observerPosition && target?.position) {
+    const dx = Number(target.position.x) - Number(observerPosition.x);
+    const dz = Number(target.position.z) - Number(observerPosition.z);
+    const length = Math.hypot(dx, dz);
+    if (length > 0.001) {
+      const radial = (vx * dx + vz * dz) / length;
+      const lateral = Math.abs(vx * -dz + vz * dx) / length;
+      radialSpeed = radial;
+      lateralRatio = speed > 0.05 ? lateral / speed : 0;
+    }
+  }
+  next.averageRadialSpeed += (radialSpeed - next.averageRadialSpeed) * alpha;
+  next.averageLateralRatio += (lateralRatio - next.averageLateralRatio) * alpha;
+  next.previousVelocity = { x: vx, z: vz, speed };
   return next;
 }
+
 export function chooseCombatPlan({ health, food, distance, weapon, bow, crossbow, arrows, hasShield, hasFood, opponentProfile }) {
   if (health <= 5 && hasFood) return { mode:'recover', reason:'critical health' };
   if (health <= 7 && !hasFood) return { mode:'disengage', reason:'critical health and no food' };
   if (food <= 6) return { mode:'recover', reason:'low hunger' };
-  if (!weapon && (bow || crossbow) && arrows && distance > 5) return { mode:'ranged', reason:'bow and arrows available; target outside melee range' };
+  if (!weapon && (bow || crossbow) && arrows && distance > 5)
+    return { mode:'ranged', reason:'no melee weapon; use available ranged option' };
   if (!weapon) return { mode:'survive', reason:'no usable weapon; unarmed fallback' };
-  if ((bow || crossbow) && arrows && distance > 9 && (opponentProfile?.averageSpeed ?? 0) < 0.2)
-    return { mode:'ranged', reason:'stationary distant target; ranged attack preferred' };
-  if (distance > 5) return { mode:'close-gap', reason:'target outside melee range' };
-  if (hasShield && health <= 12) return { mode:'guarded-engage', reason:'shield available and health reduced' };
+
+  const profile = opponentProfile ?? {};
+  const fastTarget = (profile.averageSpeed ?? 0) > 0.24;
+  const evasiveTarget = (profile.averageLateralRatio ?? 0) > 0.62 ||
+    (profile.directionChanges ?? 0) >= Math.max(3, Math.floor((profile.samples ?? 0) / 8));
+
+  if ((bow || crossbow) && arrows && distance > 10 && !fastTarget && (profile.averageRadialSpeed ?? 0) < 0.12)
+    return { mode:'ranged', reason:'target is distant and not closing quickly; take a predicted ranged shot' };
+  if (distance > 5) return { mode:'close-gap', reason: fastTarget ? 'close distance against a fast-moving target' : 'target outside melee range' };
+  if (hasShield && health <= 14 && (fastTarget || evasiveTarget))
+    return { mode:'guarded-engage', reason:'use shield discipline against an aggressive or evasive target' };
+  if (evasiveTarget && distance <= 5)
+    return { mode:'engage', reason:'evasive target detected; maintain pressure and avoid overcommitting' };
   return { mode:'engage', reason:'loadout and health permit engagement' };
 }
 
