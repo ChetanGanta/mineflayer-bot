@@ -44,6 +44,9 @@ export function scoreContextualWeapon(item, context = {}) {
   const distance = Number.isFinite(context.distance) ? context.distance : 3;
   const falling = Number(context.verticalVelocity ?? 0) < -0.12;
   const heightAdvantage = Number(context.heightAdvantage ?? 0);
+  const opponentProfile = context.opponentProfile ?? {};
+  const opponentFast = Number(opponentProfile.averageSpeed ?? 0) > 0.24;
+  const opponentEvasive = Number(opponentProfile.averageLateralRatio ?? 0) > 0.62;
 
   // Mace is situational: prefer it for a real downward smash opportunity,
   // not as the default weapon while standing on the ground.
@@ -56,7 +59,10 @@ export function scoreContextualWeapon(item, context = {}) {
   }
   if (kind === 'axe' && context.opponentHasShield) score += 3.5;
   if (kind === 'sword' && distance < 2.8) score += 2;
+  if (kind === 'sword' && opponentEvasive && distance < 4) score += 1.2;
+  if (kind === 'spear' && opponentFast && distance >= 3) score += 1.5;
   if (kind === 'trident' && distance > 5) score += 1.5;
+  if (kind === 'trident' && opponentFast && distance > 6) score += 1.2;
   return score * Math.max(0.15, durability(item));
 }
 
