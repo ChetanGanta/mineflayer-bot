@@ -1,36 +1,43 @@
-# NULL AI chat setup
+# NULL free AI chat setup
 
-NULL uses the OpenAI Responses API for short, in-character Minecraft chat replies.
+NULL uses Google's Gemini API with an eligible free-tier model. The default is `gemini-2.5-flash-lite`; Google lists free input and output for this model on its free tier. Free-tier quotas and model availability can change, and requests may be rate-limited.
 
-## Required environment variables
+## 1. Get a Gemini API key
 
-Set these in the environment where the Mineflayer bot runs:
+1. Open [Google AI Studio](https://aistudio.google.com/).
+2. Sign in and create an API key.
+3. Keep the key private. Do not commit it, send it in Minecraft chat, or paste it into public screenshots.
 
-- `OPENAI_API_KEY`: your secret OpenAI API key
-- `OPENAI_MODEL`: defaults to `gpt-6-luna`
-- `OPENAI_API_URL`: defaults to `https://api.openai.com/v1/responses`
+Google's free tier has usage limits. Do not upgrade to a paid tier or attach billing if you want to keep this project at ₹0. Google may use free-tier prompts and responses to improve its products; avoid sending private or sensitive information.
 
-Do not put a real API key in this repository, a screenshot, or Minecraft chat.
+## 2. Configure the bot
 
-## Windows CMD
+Set this environment variable where the bot runs:
+
+- `GEMINI_API_KEY`: your private API key
+- `GEMINI_MODEL`: optional; defaults to `gemini-2.5-flash-lite`
+
+### Windows CMD
 
 For the current CMD window only:
 
 ```bat
-set OPENAI_API_KEY=YOUR_KEY_HERE
-set OPENAI_MODEL=gpt-6-luna
+set GEMINI_API_KEY=PASTE_YOUR_KEY_HERE
+set GEMINI_MODEL=gemini-2.5-flash-lite
 node bot.mjs
 ```
 
-Replace `YOUR_KEY_HERE` locally. Do not paste the key into a public chat or commit it.
+Replace the placeholder locally. Never share the key with anyone.
 
 ## Behavior
 
-- Only names in `MC_OPERATORS` (default: `UserZero`) get AI conversational replies.
-- Normal messages from UserZero are sent to OpenAI with a short rolling conversation history.
-- Replies are limited to one short line (100 characters).
-- `fight` and `stop` are handled by the existing command code before the AI chat handler, so they remain independent of the language model.
-- Slash commands and messages beginning with `!` are ignored by the conversational model.
-- If the API is unavailable or the key is missing, NULL logs the error locally and does not spam public chat.
+- Only configured operators (default: `UserZero`) receive AI conversational replies.
+- NULL sends normal UserZero messages to Gemini with a short rolling conversation history.
+- Replies are one short line, capped at 100 characters.
+- `fight` and `stop` are handled by the existing game code, separately from AI.
+- Slash commands and messages beginning with `!` are ignored.
+- API errors and missing keys are logged locally; NULL does not spam public chat.
 
-OpenAI API usage is billed separately from a ChatGPT app subscription. Set a spending limit in the API billing dashboard before using it for a long SMP session.
+## Cost and limits
+
+The code uses the Gemini free tier and does not call the OpenAI API. Google currently lists free input/output for the default model, but free quotas are limited and can change. Keep the project on the free tier and do not enable paid billing. See [Gemini API pricing](https://ai.google.dev/gemini-api/docs/pricing).
