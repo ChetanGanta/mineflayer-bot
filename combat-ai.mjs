@@ -55,16 +55,20 @@ export function scoreArmor(item) {
   return materialMultiplier(name) * 10 + protection + durabilityRatio(item);
 }
 
-// Session-local opponent model. Samples movement, lateral dodging and direction changes.
+// Session-local opponent model. Only infer behaviours observable from entity motion.
 export function updateOpponentProfile(profile, target, observerPosition = null) {
   const velocity = target?.velocity ?? {};
   const vx = Number(velocity.x ?? 0);
+  const vy = Number(velocity.y ?? 0);
   const vz = Number(velocity.z ?? 0);
   const speed = Math.hypot(vx, vz);
+  const onGround = target?.onGround;
   const next = profile ?? {
     samples: 0, averageSpeed: 0, movingSamples: 0,
     directionChanges: 0, averageLateralRatio: 0,
-    averageRadialSpeed: 0, previousVelocity: null
+    averageRadialSpeed: 0, retreatSamples: 0, rushSamples: 0,
+    jumpSamples: 0, jumpStarts: 0, airborneSamples: 0,
+    previousVelocity: null, previousOnGround: null
   };
 
   next.samples += 1;
@@ -85,14 +89,23 @@ export function updateOpponentProfile(profile, target, observerPosition = null) 
     const dz = Number(target.position.z) - Number(observerPosition.z);
     const length = Math.hypot(dx, dz);
     if (length > 0.001) {
-      const radial = (vx * dx + vz * dz) / length;
+      radialSpeed = (vx * dx + vz * dz) / length;
       const lateral = Math.abs(vx * -dz + vz * dx) / length;
-      radialSpeed = radial;
       lateralRatio = speed > 0.05 ? lateral / speed : 0;
     }
   }
   next.averageRadialSpeed += (radialSpeed - next.averageRadialSpeed) * alpha;
   next.averageLateralRatio += (lateralRatio - next.averageLateralRatio) * alpha;
+  if (radialSpeed > 0.1) next.retreatSamples += 1;
+  if (radialSpeed < -0.1) next.rushSamples += 1;
+
+  // Count airborne/jump behaviour only when Mineflayer supplies onGround.
+  // Vertical velocity alone is not enough to distinguish a jump from falling.
+  if (onGround === false) next.airborneSamples += 1;
+  if (onGround === false && next.previousOnGround === true && vy > 0.08) next.jumpStarts += 1;
+  if (onGround === false && vy > 0.08) next.jumpSamples += 1;
+  if (typeof onGround === 'boolean') next.previousOnGround = onGround;
+
   next.previousVelocity = { x: vx, z: vz, speed };
   return next;
 }
@@ -108,15 +121,25 @@ export function chooseCombatPlan({ health, food, distance, weapon, bow, crossbow
   const profile = opponentProfile ?? {};
   const fastTarget = (profile.averageSpeed ?? 0) > 0.24;
   const evasiveTarget = (profile.averageLateralRatio ?? 0) > 0.62 ||
-    (profile.directionChanges ?? 0) >= Math.max(3, Math.floor((profile.samples ?? 0) / 8));
+    (profile.directionChanges ?? 0) >= Math.max(3, Math.floor((profile.samples ?? 0) / 8)) ||
+    ((profile.jumpStarts ?? 0) >= 2 && (profile.jumpSamples ?? 0) / Math.max(1, profile.samples ?? 0) > 0.12);
+  const retreatingTarget = (profile.retreatSamples ?? 0) >= 4 &&
+    (profile.averageRadialSpeed ?? 0) > 0.08;
+  const rushingTarget = (profile.rushSamples ?? 0) >= 3 &&
+    (profile.averageRadialSpeed ?? 0) < -0.1;
 
   if ((bow || crossbow) && arrows && distance > 10 && !fastTarget && (profile.averageRadialSpeed ?? 0) >= -0.12)
     return { mode:'ranged', reason:'target is distant and not closing quickly; take a predicted ranged shot' };
-  if (distance > 5) return { mode:'close-gap', reason: fastTarget ? 'close distance against a fast-moving target' : 'target outside melee range' };
+  if (distance > 5) return {
+    mode:'close-gap',
+    reason: retreatingTarget ? 'cut off a retreating target' : fastTarget ? 'close distance against a fast-moving target' : 'target outside melee range'
+  };
   if (hasShield && health <= 14 && (fastTarget || evasiveTarget))
     return { mode:'guarded-engage', reason:'use shield discipline against an aggressive or evasive target' };
   if (evasiveTarget && distance <= 5)
-    return { mode:'engage', reason:'evasive target detected; maintain pressure and avoid overcommitting' };
+    return { mode:'engage', reason:'jumping or evasive movement detected; keep pressure and vary approach' };
+  if (rushingTarget && distance <= 5)
+    return { mode:'engage', reason:'opponent repeatedly rushes; keep lateral spacing and punish the approach' };
   return { mode:'engage', reason:'loadout and health permit engagement' };
 }
 

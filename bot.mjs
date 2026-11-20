@@ -1,6 +1,6 @@
 import mineflayer from 'mineflayer';
 import { pathfinder, Movements, goals } from 'mineflayer-pathfinder';
-import { plugin as pvp } from 'mineflayer-pvp';
+import { plugin as pvp, MaxDamageOffset } from 'mineflayer-pvp';
 import {
   chooseBestBow, chooseCrossbow, isCrossbowLoaded,
   chooseCombatPotion, assessSpecialKit, hasArrows, scoreArmor,
@@ -10,6 +10,7 @@ import { chooseContextualWeapon, assessAdvancedKit, chooseAdvancedMode, classify
 import { SpecialCombatController } from './special-combat.mjs';
 import { SidekickChat } from './sidekick-chat.mjs';
 import { CombatMovementController } from './movement-ai.mjs';
+import { SprintResetController } from './combat-timing.mjs';
 
 const HOST = process.env.MC_HOST;
 const PORT = Number(process.env.MC_PORT ?? 25565);
@@ -39,6 +40,9 @@ function createBot() {
   bot.loadPlugin(pathfinder);
   bot.loadPlugin(pvp);
   const movement = new CombatMovementController(bot, goals);
+  const sprintReset = new SprintResetController(bot);
+  // Wait for the weapon's full cooldown; add at most one tick of safety margin.
+  bot.pvp.meleeAttackRate = new MaxDamageOffset(0, 2);
   const special = new SpecialCombatController(bot, {
     maxSelfDamage: Number(process.env.MC_MAX_SELF_BLAST_DAMAGE ?? 4),
     explosiveAttacksEnabled: process.env.MC_ENABLE_EXPLOSIVES === 'true'
@@ -250,6 +254,7 @@ function createBot() {
       const [, action, requestedTarget] = text.match(/^(fight|stop)(?:\s+(\S+))?$/i);
       if (action.toLowerCase() === 'stop') {
         activeTarget = null;
+        sprintReset.reset();
         special.stop();
         movement.reset();
         bot.pvp.stop();
@@ -272,6 +277,7 @@ function createBot() {
       }
 
       activeTarget = chosen.name;
+      sprintReset.reset();
       movement.reset();
       const weapon = await equipBestGear();
       const plan = assess(chosen.entity);
@@ -288,6 +294,15 @@ function createBot() {
 
     // All other chat is handled as ordinary in-character conversation.
     sidekick.onChat(username, message);
+  });
+
+  bot.on('attackedTarget', () => {
+    const target = bot.pvp.target;
+    if (!target || target.username !== activeTarget) return;
+    sprintReset.onAttack(target, {
+      combatActive: Boolean(activeTarget),
+      specialBusy: special.busy
+    });
   });
 
   bot.on('entityHurt', entity => {
@@ -309,6 +324,7 @@ function createBot() {
     sidekick.stop();
     special.stop();
     movement.reset();
+    sprintReset.reset();
     console.log('[RECONNECT] Retrying in 5 seconds...');
     if (!shuttingDown) reconnectTimer = setTimeout(createBot, 5000);
   });

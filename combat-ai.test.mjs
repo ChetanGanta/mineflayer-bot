@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { updateOpponentProfile, chooseCombatPlan } from './combat-ai.mjs';
 import { chooseMovementPlan, getStrafeWaypoint, CombatMovementController } from './movement-ai.mjs';
+import { canSprintReset, SprintResetController } from './combat-timing.mjs';
 
 test('opponent profile detects lateral movement', () => {
   const target = {
@@ -22,6 +23,65 @@ test('opponent profile counts sharp direction reversals', () => {
     position: { x: 4, z: 0 }, velocity: { x: -0.3, z: 0 }
   }, observer);
   assert.equal(second.directionChanges, 1);
+});
+
+test('opponent profile detects repeated jumps from grounded-to-airborne transitions', () => {
+  const observer = { x: 0, z: 0 };
+  let profile = updateOpponentProfile(null, {
+    position: { x: 4, z: 0 }, velocity: { x: 0, y: 0, z: 0 }, onGround: true
+  }, observer);
+  for (let i = 0; i < 4; i++) {
+    profile = updateOpponentProfile(profile, {
+      position: { x: 4, z: 0 }, velocity: { x: 0, y: 0.2, z: 0 }, onGround: false
+    }, observer);
+    profile = updateOpponentProfile(profile, {
+      position: { x: 4, z: 0 }, velocity: { x: 0, y: -0.2, z: 0 }, onGround: false
+    }, observer);
+    profile = updateOpponentProfile(profile, {
+      position: { x: 4, z: 0 }, velocity: { x: 0, y: 0, z: 0 }, onGround: true
+    }, observer);
+  }
+  assert.equal(profile.jumpStarts, 4);
+  assert.ok(profile.jumpSamples > 0);
+});
+
+test('opponent profile distinguishes repeated retreating and rushing movement', () => {
+  const observer = { x: 0, z: 0 };
+  let retreat = null;
+  let rush = null;
+  for (let i = 0; i < 5; i++) {
+    retreat = updateOpponentProfile(retreat, {
+      position: { x: 4, z: 0 }, velocity: { x: 0.25, y: 0, z: 0 }, onGround: true
+    }, observer);
+    rush = updateOpponentProfile(rush, {
+      position: { x: 4, z: 0 }, velocity: { x: -0.25, y: 0, z: 0 }, onGround: true
+    }, observer);
+  }
+  assert.equal(retreat.retreatSamples, 5);
+  assert.equal(rush.rushSamples, 5);
+  assert.ok(retreat.averageRadialSpeed > 0);
+  assert.ok(rush.averageRadialSpeed < 0);
+});
+
+test('combat plan recognises a repeated jumper as evasive', () => {
+  const plan = chooseCombatPlan({
+    health: 20, food: 20, distance: 4, weapon: { name: 'diamond_sword' },
+    bow: null, crossbow: null, arrows: false, hasShield: false, hasFood: true,
+    opponentProfile: { samples: 20, averageSpeed: 0.1, averageLateralRatio: 0.1,
+      directionChanges: 0, jumpStarts: 4, jumpSamples: 8, averageRadialSpeed: 0 }
+  });
+  assert.match(plan.reason, /jumping or evasive/);
+});
+
+test('combat plan prioritises cutting off a retreating target at range', () => {
+  const plan = chooseCombatPlan({
+    health: 20, food: 20, distance: 8, weapon: { name: 'diamond_sword' },
+    bow: null, crossbow: null, arrows: false, hasShield: false, hasFood: true,
+    opponentProfile: { samples: 20, averageSpeed: 0.3, averageLateralRatio: 0.1,
+      directionChanges: 0, retreatSamples: 10, rushSamples: 0, averageRadialSpeed: 0.2 }
+  });
+  assert.equal(plan.mode, 'close-gap');
+  assert.match(plan.reason, /retreating/);
 });
 
 test('combat plan closes distance against a fast target', () => {
@@ -149,4 +209,78 @@ test('movement controller dodges sideways when hit during close combat', () => {
   assert.ok(issuedGoals[0].goal instanceof GoalNear);
   assert.equal(issuedGoals[0].dynamic, true);
   assert.equal(controller.dodge(target), null);
+});
+
+test('sprint reset requires grounded forward sprinting combat', () => {
+  assert.equal(canSprintReset({
+    onGround: true, sprinting: true, movingForward: true,
+    targetValid: true, combatActive: true, specialBusy: false
+  }), true);
+  assert.equal(canSprintReset({
+    onGround: false, sprinting: true, movingForward: true,
+    targetValid: true, combatActive: true, specialBusy: false
+  }), false);
+  assert.equal(canSprintReset({
+    onGround: true, sprinting: false, movingForward: true,
+    targetValid: true, combatActive: true, specialBusy: false
+  }), false);
+  assert.equal(canSprintReset({
+    onGround: true, sprinting: true, movingForward: true,
+    targetValid: true, combatActive: true, specialBusy: true
+  }), false);
+});
+
+test('sprint reset releases sprint for one tick then restores it if fight continues', async () => {
+  const states = [];
+  const target = { id: 4, isValid: true };
+  const bot = {
+    entity: { onGround: true },
+    time: { age: 100 },
+    pvp: { target },
+    getControlState(name) { return name === 'sprint' || name === 'forward'; },
+    setControlState(name, state) { states.push([name, state]); },
+    async waitForTicks(ticks) { assert.equal(ticks, 1); }
+  };
+  const controller = new SprintResetController(bot);
+  assert.equal(controller.onAttack(target), true);
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.deepEqual(states, [['sprint', false], ['sprint', true]]);
+});
+
+test('sprint reset does not restore sprint after target changes', async () => {
+  const states = [];
+  const target = { id: 5, isValid: true };
+  const bot = {
+    entity: { onGround: true },
+    time: { age: 200 },
+    pvp: { target },
+    getControlState(name) { return name === 'sprint' || name === 'forward'; },
+    setControlState(name, state) { states.push([name, state]); },
+    async waitForTicks() { this.pvp.target = null; }
+  };
+  const controller = new SprintResetController(bot);
+  assert.equal(controller.onAttack(target), true);
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.deepEqual(states, [['sprint', false]]);
+});
+
+test('sprint reset enforces a tick cooldown', async () => {
+  const states = [];
+  const target = { id: 6, isValid: true };
+  const bot = {
+    entity: { onGround: true },
+    time: { age: 300 },
+    pvp: { target },
+    getControlState(name) { return name === 'sprint' || name === 'forward'; },
+    setControlState(name, state) { states.push([name, state]); },
+    async waitForTicks() {}
+  };
+  const controller = new SprintResetController(bot, { cooldownTicks: 6 });
+  assert.equal(controller.onAttack(target), true);
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(controller.onAttack(target), false);
+  assert.deepEqual(states, [['sprint', false], ['sprint', true]]);
 });
