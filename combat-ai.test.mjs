@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { updateOpponentProfile, chooseCombatPlan } from './combat-ai.mjs';
-import { chooseMovementPlan, getStrafeWaypoint } from './movement-ai.mjs';
+import { chooseMovementPlan, getStrafeWaypoint, CombatMovementController } from './movement-ai.mjs';
 
 test('opponent profile detects lateral movement', () => {
   const target = {
@@ -70,4 +70,59 @@ test('strafe waypoint is perpendicular to the bot-target line', () => {
 
 test('movement creates space when opponents are too close', () => {
   assert.equal(chooseMovementPlan({ distance: 1.2 }).mode, 'create-space');
+});
+
+test('movement controller uses pathfinder goals for alternating flank steps', () => {
+  const position = (x, y, z) => ({
+    x, y, z,
+    distanceTo(other) {
+      return Math.hypot(this.x - other.x, this.y - other.y, this.z - other.z);
+    }
+  });
+  const issuedGoals = [];
+  const bot = {
+    entity: { position: position(3, 64, 0) },
+    pathfinder: { setGoal(goal, dynamic) { issuedGoals.push({ goal, dynamic }); } }
+  };
+  class GoalFollow {
+    constructor(entity, range) { this.entity = entity; this.range = range; }
+  }
+  class GoalNear {
+    constructor(x, y, z, range) { Object.assign(this, { x, y, z, range }); }
+  }
+  const controller = new CombatMovementController(
+    bot, { GoalFollow, GoalNear }, { repositionCooldown: 0 }
+  );
+  const target = { id: 7, isValid: true, position: position(0, 64, 0) };
+
+  controller.update(target, { averageLateralRatio: 0.8, directionChanges: 3 });
+  controller.update(target, { averageLateralRatio: 0.8, directionChanges: 3 });
+
+  assert.equal(issuedGoals.length, 2);
+  assert.ok(issuedGoals[0].goal instanceof GoalNear);
+  assert.ok(issuedGoals[1].goal instanceof GoalNear);
+  assert.notEqual(issuedGoals[0].goal.z, issuedGoals[1].goal.z);
+  assert.ok(issuedGoals.every(entry => entry.dynamic === true));
+});
+
+test('movement controller restores follow pursuit at long range', () => {
+  const position = (x, y, z) => ({
+    x, y, z,
+    distanceTo(other) { return Math.hypot(this.x - other.x, this.y - other.y, this.z - other.z); }
+  });
+  const issuedGoals = [];
+  const bot = {
+    entity: { position: position(0, 64, 0) },
+    pathfinder: { setGoal(goal, dynamic) { issuedGoals.push({ goal, dynamic }); } }
+  };
+  class GoalFollow {
+    constructor(entity, range) { this.entity = entity; this.range = range; }
+  }
+  class GoalNear {}
+  const controller = new CombatMovementController(bot, { GoalFollow, GoalNear });
+  const target = { id: 9, isValid: true, position: position(0, 64, 8) };
+
+  controller.update(target);
+  assert.ok(issuedGoals[0].goal instanceof GoalFollow);
+  assert.equal(issuedGoals[0].goal.range, 2);
 });
