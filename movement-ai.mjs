@@ -5,8 +5,12 @@
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
 export function chooseMovementPlan({ distance, profile = {} }) {
+  const jumpRatio = Number(profile.jumpSamples ?? 0) / Math.max(1, Number(profile.samples ?? 0));
   const evasive = Number(profile.averageLateralRatio ?? 0) > 0.48 ||
-    Number(profile.directionChanges ?? 0) >= 2;
+    Number(profile.directionChanges ?? 0) >= 2 ||
+    (Number(profile.jumpStarts ?? 0) >= 2 && jumpRatio > 0.12);
+  const rushing = Number(profile.rushSamples ?? 0) >= 3 &&
+    Number(profile.averageRadialSpeed ?? 0) < -0.1;
 
   if (distance > 5.5) {
     return { mode: 'pursue', reason: 'close the gap', radius: 2 };
@@ -17,7 +21,8 @@ export function chooseMovementPlan({ distance, profile = {} }) {
   if (distance <= 5.2) {
     return {
       mode: 'strafe',
-      reason: evasive ? 'orbit an evasive target' : 'keep moving during close combat',
+      reason: evasive ? 'vary angle against a jumpy or evasive target' :
+        rushing ? 'keep lateral spacing against a rushing target' : 'keep moving during close combat',
       radius: clamp(distance * 0.55, 1.9, 2.5)
     };
   }
