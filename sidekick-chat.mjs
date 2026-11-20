@@ -269,7 +269,7 @@ export class SidekickChat {
     } else {
       // Don't answer every public message. Join the conversation when someone
       // directly addresses NULL, so the bot doesn't flood busy SMP chat.
-      const addressedToNull = new RegExp('(^|\\\\W)null(\\\\W|$)', 'i').test(text);
+      const addressedToNull = /\\bnull\\b/i.test(text);
       if (!addressedToNull) return;
       if (now() - this.lastPublicReactionAt < 12_000) return;
       this.lastPublicReactionAt = now();
