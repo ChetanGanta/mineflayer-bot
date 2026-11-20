@@ -48,6 +48,7 @@ export class CombatMovementController {
     this.repositionCooldown = repositionCooldown;
     this.goalRadius = goalRadius;
     this.lastRepositionAt = 0;
+    this.lastDodgeAt = 0;
     this.side = 1;
     this.mode = null;
     this.targetId = null;
@@ -92,8 +93,27 @@ export class CombatMovementController {
     return { ...plan, waypoint };
   }
 
+  dodge(target) {
+    if (!this.bot.entity || !target?.isValid) return null;
+    const distance = this.bot.entity.position.distanceTo(target.position);
+    if (distance > 6 || Date.now() - this.lastDodgeAt < 750) return null;
+
+    this.side *= -1;
+    const waypoint = getStrafeWaypoint(this.bot.entity.position, target.position, this.side, 2.6);
+    this.bot.pathfinder.setGoal(
+      new this.goals.GoalNear(waypoint.x, waypoint.y, waypoint.z, this.goalRadius),
+      true
+    );
+    this.targetId = target.id;
+    this.mode = 'reposition';
+    this.lastDodgeAt = Date.now();
+    this.lastRepositionAt = this.lastDodgeAt;
+    return waypoint;
+  }
+
   reset() {
     this.lastRepositionAt = 0;
+    this.lastDodgeAt = 0;
     this.side = 1;
     this.mode = null;
     this.targetId = null;
